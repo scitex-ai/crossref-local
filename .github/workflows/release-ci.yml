@@ -1,0 +1,100 @@
+name: release-ci
+
+# Post-merge validation gate. Runs on push to protected branches
+# (main, develop) and as the canonical scheduled run. Always uses the
+# FULL pytest matrix — no conditional skipping — so the protected-branch
+# history is exercised on every supported Python.
+#
+# L1 concurrency — coalesce overlapping pushes on the same branch.
+# L5a uv-managed Python (`uv python install` + `uv venv --python`) so each
+#     matrix leg pins its interpreter independently of the runner.
+# L5b .venv/bin on PATH so console scripts resolve without `uv run`.
+
+on:
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 7 * * *"  # nightly 07:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Set up Python ${{ matrix.python-version }} (uv-managed)
+        run: uv python install ${{ matrix.python-version }}
+      - name: Create uv venv on this matrix Python
+        run: uv venv --python ${{ matrix.python-version }} .venv
+      - name: Install dependencies
+        run: |
+          uv pip install --python .venv/bin/python -e ".[all,dev]" \
+            || uv pip install --python .venv/bin/python -e ".[dev]" \
+            || uv pip install --python .venv/bin/python -e .
+      - name: Run tests
+        run: |
+          export PATH="$PWD/.venv/bin:$PATH"
+          .venv/bin/pytest tests/ --cov=src/crossref_local --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        if: always() && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  import-smoke:
+    name: import-smoke-on-ubuntu-py3-12
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Set up Python 3.12 (uv-managed)
+        run: uv python install 3.12
+      - name: Install (no extras) in uv venv
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e .
+      - name: Import smoke
+        run: .venv/bin/python -c "import crossref_local; print(getattr(crossref_local, '__version__', 'unversioned'))"
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Set up Python 3.12 (uv-managed)
+        run: uv python install 3.12
+      - name: Install package + audit tooling
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[dev]"
+          uv pip install --python .venv/bin/python "scitex-dev[cli-audit]"
+      - name: Run scitex-dev ecosystem audit-all
+        run: |
+          export PATH="$PWD/.venv/bin:$PATH"
+          scitex-dev ecosystem audit-all crossref-local --no-version-check
