@@ -1,0 +1,48 @@
+name: tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 7 * * *"  # nightly 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest-matrix-on-ubuntu-py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Fallback chain: prefer [all,dev] so optional-dep code paths
+          # (yaml, fastmcp, textual) get exercised. Falls back to [dev] then
+          # plain editable so a packaging hiccup doesn't strand CI.
+          pip install -e ".[all,dev]" || pip install -e ".[dev]" || pip install -e .
+      - name: Run tests
+        run: |
+          pytest tests/ --cov=src/crossref_local --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        env:
+          # Per-matrix-job HOME so concurrent jobs sharing a self-hosted
+          # (Spartan) runner don't race on a shared $HOME/.gitconfig when
+          # codecov-action marks the workspace a safe.directory.
+          HOME: ${{ runner.temp }}/codecov-home-${{ matrix.python-version }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          disable_safe_directory: true
