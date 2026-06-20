@@ -53,7 +53,8 @@ The database file is not included in the package. You need to obtain it separate
 2. Or place the database at one of the default locations:
 
    - ``./data/crossref.db`` (project directory)
-   - ``~/.crossref_local/crossref.db`` (home directory)
+   - ``$SCITEX_DIR/crossref-local/runtime/crossref.db`` (runtime state dir)
+   - ``~/.crossref_local/crossref.db`` (legacy, deprecated)
 
 HTTP Mode (No Local Database)
 -----------------------------

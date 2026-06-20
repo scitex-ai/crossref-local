@@ -46,15 +46,21 @@ def sanitize_name(name: str) -> str:
 def get_cache_dir(user_id: Optional[str] = None) -> _Path:
     """Get cache directory, creating if needed.
 
+    The default location is ``$SCITEX_DIR/crossref-local/runtime/cache/``
+    (where ``$SCITEX_DIR`` defaults to ``~/.scitex``).  This may be
+    overridden via ``CROSSREF_LOCAL_CACHE_DIR``.
+
     Args:
         user_id: Optional user ID for multi-tenant scoping.
                  If provided, creates a user-specific subdirectory.
     """
-    cache_dir = _Path(
-        _os.environ.get(
-            "CROSSREF_LOCAL_CACHE_DIR", _Path.home() / ".cache" / "crossref-local"
-        )
-    )
+    env_dir = _os.environ.get("CROSSREF_LOCAL_CACHE_DIR")
+    if env_dir:
+        cache_dir = _Path(env_dir)
+    else:
+        from crossref_local._core.paths import state_dir as _state_dir
+
+        cache_dir = _state_dir("cache")
     # Add user subdirectory for multi-tenant support
     if user_id:
         # Sanitize user_id as well

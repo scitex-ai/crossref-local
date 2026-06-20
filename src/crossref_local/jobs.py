@@ -14,8 +14,9 @@ from typing import Optional as _Optional
 
 __all__ = ["create", "get", "list_jobs", "run"]
 
-# Default jobs directory
-_JOBS_DIR = _Path.home() / ".crossref_local" / "jobs"
+# Default jobs directory — resolved lazily via the runtime state-dir resolver.
+# Legacy location was ~/.crossref_local/jobs.
+_JOBS_DIR = None  # set on first use in _get_default_jobs_dir()
 
 
 @_dataclass
@@ -61,11 +62,21 @@ class Job:
         return cls(**data)
 
 
+def _get_default_jobs_dir() -> _Path:
+    """Resolve the default jobs directory under ``runtime/jobs/``."""
+    global _JOBS_DIR
+    if _JOBS_DIR is None:
+        from crossref_local._core.paths import runtime_dir as _runtime_dir
+
+        _JOBS_DIR = _runtime_dir() / "jobs"
+    return _JOBS_DIR
+
+
 class JobQueue:
     """Manages job persistence and execution."""
 
     def __init__(self, jobs_dir: _Optional[_Path] = None):
-        self.jobs_dir = _Path(jobs_dir) if jobs_dir else _JOBS_DIR
+        self.jobs_dir = _Path(jobs_dir) if jobs_dir else _get_default_jobs_dir()
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
     def _job_path(self, job_id: str) -> _Path:

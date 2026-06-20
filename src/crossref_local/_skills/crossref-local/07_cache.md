@@ -11,7 +11,7 @@ skill: cache
 # Paper Cache
 
 Disk-based caching of paper metadata for efficient re-querying and reduced
-context usage. Stored in `~/.crossref_local/` as JSON files.
+context usage. Stored under `$SCITEX_DIR/crossref-local/runtime/cache/` (defaulting to `~/.scitex/crossref-local/runtime/cache/`) as JSON files.
 
 ## Public API (`crossref_local.cache`)
 
@@ -145,7 +145,8 @@ cache.delete("epilepsy")
 
 ## Cache Directory
 
-Default: `~/.crossref_local/`
+Default: `$SCITEX_DIR/crossref-local/runtime/cache/` (where `$SCITEX_DIR`
+defaults to `~/.scitex`). Override via `CROSSREF_LOCAL_CACHE_DIR` env var.
 
 - `{name}.json` — paper data
 - `{name}.meta.json` — creation metadata (query, timestamps, counts)

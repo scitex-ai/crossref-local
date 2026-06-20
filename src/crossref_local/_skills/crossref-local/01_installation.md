@@ -43,8 +43,8 @@ crossref-local show-status        # also shows DB mode + path
 ## Editable install (development)
 
 ```bash
-git clone https://github.com/ywatanabe1989/crossref_local
-cd crossref_local
+git clone https://github.com/ywatanabe1989/crossref-local
+cd crossref-local
 pip install -e '.[dev]'
 ```
 

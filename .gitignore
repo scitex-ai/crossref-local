@@ -2,6 +2,19 @@
 legacy/
 .old/
 
+# Runtime state dirs inside .scitex/<pkg>/ — everything gitignored
+# except .gitkeep and README.md.
+.scitex/*/runtime/*
+!.scitex/*/runtime/.gitkeep
+!.scitex/*/runtime/README.md
+
+# .scitex/dev/config.yaml is tracked; everything else under .scitex/
+# is gitignored.
+.scitex/*
+!.scitex/dev/
+.scitex/dev/*
+!.scitex/dev/config.yaml
+
 # Development/Claude
 .claude/
 .dev/

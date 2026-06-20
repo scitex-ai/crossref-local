@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "crossref-local"
-version = "0.7.4"
+version = "0.7.6"
 description = "Local CrossRef database with 167M+ works and full-text search"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -86,10 +86,10 @@ crossref-local = "crossref_local"
 crossref-local = "crossref_local"
 
 [project.urls]
-Homepage = "https://github.com/ywatanabe1989/crossref_local"
+Homepage = "https://github.com/ywatanabe1989/crossref-local"
 Documentation = "https://crossref-local.readthedocs.io"
-Repository = "https://github.com/ywatanabe1989/crossref_local"
-Issues = "https://github.com/ywatanabe1989/crossref_local/issues"
+Repository = "https://github.com/ywatanabe1989/crossref-local"
+Issues = "https://github.com/ywatanabe1989/crossref-local/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/crossref_local"]

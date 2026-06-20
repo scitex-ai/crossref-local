@@ -31,7 +31,8 @@ crossref-local supports two access modes: direct SQLite (`db`) and HTTP API
 1. `SCITEX_SCHOLAR_CROSSREF_DB` env var
 2. `CROSSREF_LOCAL_DB` env var
 3. `./data/crossref.db` (cwd)
-4. `~/.crossref_local/crossref.db`
+4. `$SCITEX_DIR/crossref-local/runtime/crossref.db` (runtime state dir)
+5. `~/.crossref_local/crossref.db` (legacy, deprecated)
 
 ## Python API
 
