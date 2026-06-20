@@ -1,4 +1,4 @@
-name: Docs
+name: docs
 
 on:
   push:
@@ -7,6 +7,11 @@ on:
 
 jobs:
   sphinx:
+    # Skip when HEAD is the bot's own previous docs auto-commit — breaks
+    # the infinite loop without using `[skip ci]`, which would also
+    # suppress the tag-push and release workflows when the auto-commit
+    # is the most recent commit on develop at release time.
+    if: "!contains(github.event.head_commit.message, 'docs(sphinx_html): refresh from CI build')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,7 +26,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install package + docs deps
-        run: pip install -e ".[docs]" || pip install -e ".[dev]" sphinx sphinx-rtd-theme myst-parser sphinx-copybutton sphinx-autodoc-typehints
+        run: pip install -e ".[docs]"
 
       - name: Build Sphinx HTML (warnings fail PRs only)
         run: |
@@ -31,20 +36,24 @@ jobs:
             sphinx-build -b html docs/sphinx docs/sphinx/_build/html
           fi
 
-      - name: Refresh src/crossref_local/_sphinx_html/ (push to default branch only)
-        if: github.event_name == 'push'
+      - name: Refresh src/crossref_local/_sphinx_html/ (develop push only)
+        # main is PR-only — its _sphinx_html/ bundle arrives via the
+        # develop -> main PR. Direct bot-pushes to main are inhibited
+        # so the branch history stays linear-via-PR.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         run: |
           rm -rf src/crossref_local/_sphinx_html
           cp -rf docs/sphinx/_build/html src/crossref_local/_sphinx_html
           touch src/crossref_local/_sphinx_html/.nojekyll
 
-      - name: Commit refreshed HTML if it changed
-        if: github.event_name == 'push'
+      - name: Commit refreshed HTML if it changed (develop push only)
+        continue-on-error: true
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         run: |
           if [ -n "$(git status --porcelain src/crossref_local/_sphinx_html)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add src/crossref_local/_sphinx_html
-            git commit -m "docs: refresh _sphinx_html/ from CI build [skip ci]"
+            git commit -m "docs(sphinx_html): refresh from CI build"
             git push
           fi

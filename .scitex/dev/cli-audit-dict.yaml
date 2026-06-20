@@ -1,0 +1,11 @@
+# Project-local CLI-audit dictionary (scitex-dev audit-cli §1 leaf-naming).
+#
+# Moby tags `relay` as BOTH a noun and a verb, so the auditor's
+# noun-vs-verb leaf check flags the `relay` subcommand as a bare noun.
+# In this CLI it is the intransitive verb sense — `crossref-local relay`
+# means "relay (the database over HTTP)", the same shape as `serve`.
+# Declaring it here is the sanctioned escape hatch the auditor points to
+# (the same mechanism `next` uses) — no rename of a published command.
+
+intransitive_verbs:
+  - relay
