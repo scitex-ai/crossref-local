@@ -138,6 +138,8 @@ from ._core import (
     # Export
     save,
     SUPPORTED_FORMATS,
+    # Update (incremental refresh)
+    update,
 )
 
 # Checker
@@ -214,6 +216,8 @@ __all__ = [
     # Export/Save
     "save",
     "SUPPORTED_FORMATS",
+    # Incremental database update
+    "update",
     # Citation checking
     "check_citations",
     "check_bibtex",
