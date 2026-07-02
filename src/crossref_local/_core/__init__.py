@@ -25,6 +25,7 @@ from .config import Config
 from .db import Database, close_db, get_db
 from .export import SUPPORTED_FORMATS, save
 from .models import SearchResult, Work
+from .update import update
 
 __all__ = [
     # API functions
@@ -57,6 +58,8 @@ __all__ = [
     # Export
     "save",
     "SUPPORTED_FORMATS",
+    # Update (incremental refresh)
+    "update",
 ]
 
 # EOF

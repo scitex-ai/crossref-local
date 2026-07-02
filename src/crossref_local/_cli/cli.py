@@ -295,6 +295,11 @@ from .mcp import mcp
 
 cli.add_command(mcp)
 
+# Register update command (extracted to its own module for the line limit)
+from .update import update_cmd
+
+cli.add_command(update_cmd)
+
 
 @cli.command("relay", context_settings=CONTEXT_SETTINGS)
 @click.option("--host", default=None, envvar="CROSSREF_LOCAL_HOST", help="Host to bind")

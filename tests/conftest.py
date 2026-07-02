@@ -38,6 +38,7 @@ TEST_DB_PATH = Path(__file__).parent / "crossref_local" / "fixtures" / "test_cro
 _DB_OPTIONAL_TEST_MODULES = frozenset(
     {
         "test_cli_completion",
+        "test_cli_update",
         "test_config",
         "test_mcp_server",
         "test_cross_package_imports",
