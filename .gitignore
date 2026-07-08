@@ -696,3 +696,4 @@ tests/crossref_local/fixtures/*.db
 tests/crossref_local/fixtures/*.json
 _.venv/
 .coverage
+.worktrees/
