@@ -1,5 +1,20 @@
 name: CLA Assistant
 
+# PILOT: org-level reusable-workflow caller (scitex-ai/.github, 2026-07-10).
+# Triggers/permissions preserved verbatim from the prior local file.
+# Reusable workflow defaults (owner_login=ywatanabe1989,
+# owner_allowlist="bot*,ywatanabe1989", default_branch=main) already match
+# this repo's prior hardcoded values, so no `with:` overrides are needed.
+# NOTE: this repo's on: has no `push` trigger, so the reusable's
+# owner-bypass job (guarded by `if: github.event_name == 'push'`) never
+# fires here — same as before (this repo never had an owner-bypass job).
+# NOTE (pre-existing, unrelated to this migration): the prior local file
+# referenced `secrets.CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN`, but the repo's
+# actual configured secret is named `PERSONAL_ACCESS_TOKEN` (no prefix) —
+# neither that name nor the reusable's expected `GH_PERSONAL_ACCESS_TOKEN`
+# match, so PERSONAL_ACCESS_TOKEN resolves empty before and after this PR
+# (no regression; flagged for a follow-up secret rename/add).
+
 on:
   issue_comment:
     types: [created]
@@ -13,21 +28,6 @@ permissions:
   statuses: write
 
 jobs:
-  CLAssistant:
-    runs-on: ubuntu-latest
-    steps:
-      - name: CLA Assistant
-        uses: contributor-assistant/github-action@v2.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN }}
-        with:
-          path-to-signatures: "signatures/cla.json"
-          path-to-document: "https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md"
-          branch: "cla-signatures"
-          allowlist: bot*,ywatanabe1989
-          custom-allsigned-prcomment: |
-            Thank you for signing the SciTeX CLA. Your contribution can now be reviewed.
-          custom-notsigned-prcomment: |
-            Please sign the [SciTeX CLA](https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md) before your contribution can be merged.
-            Comment `I have read and agree to the SciTeX CLA.` to sign.
+  call:
+    uses: scitex-ai/.github/.github/workflows/cla.yml@main
+    secrets: inherit
