@@ -27,6 +27,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Create per-job venv (self-hosted shared-cache isolation)
+        # Self-hosted runners share one read-only tool-cache + home, so
+        # pip-installing into the base interpreter is blocked (PEP 668) and
+        # would race across repos. A per-job venv on the runner's local
+        # $RUNNER_TEMP isolates deps; GITHUB_PATH makes later steps use it.
+        # (Same pattern as scitex-dev's rtd-sphinx workflow.)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
       - name: Install package + docs deps
         run: pip install -e ".[docs]"
 
