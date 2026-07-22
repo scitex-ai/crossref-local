@@ -444,7 +444,7 @@ def differential_update(
     except ImportError:
         logger.warning(
             "crossref_local not importable — db_stats cache NOT "
-            "refreshed; run `crossref-local refresh-stats` manually"
+            "refreshed; run `crossref-local sync-stats` manually"
         )
 
     elapsed = time.time() - start_time

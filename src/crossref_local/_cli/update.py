@@ -1,18 +1,59 @@
 #!/usr/bin/env python3
-"""Update command for crossref-local CLI.
+"""``update-db`` command for the crossref-local CLI.
 
 Thin Click wrapper over ``crossref_local.update`` (which forwards to the
 project's differential-update logic). Kept in its own module to mirror
-openalex-local's ``update`` command extraction and honour the line limit
-on ``cli.py``.
+openalex-local's command extraction and honour the line limit on
+``cli.py``.
+
+Renamed from bare ``update`` in 0.8.1 (audit §1: a bare transitive verb
+at top level needs an object); the old spelling stays as a hidden
+warn-phase deprecated alias (see ``_cli/deprecations.py``). Help is
+spec-built (CliHelp, audit §4b) with a free-form fallback for scitex-dev
+versions without the helper. The interactive ``click.confirm`` gate was
+replaced by refuse-without-``--yes`` (audit §2: non-interactive CLI
+contract).
 """
 
 import sys
 
 import click
 
+_HELP_SUMMARY = "Incrementally update the local database from the CrossRef API."
+_HELP_DESCRIPTION = (
+    "Fetches works newer than the recorded last sync date from the "
+    "CrossRef REST API (deep-paged) and upserts them into the database, "
+    "then refreshes the db_stats exact-count cache.",
+    "Non-interactive: a real (non --dry-run) run requires --yes/-y and "
+    "refuses otherwise (exit 2).",
+)
+_HELP_EXAMPLES = (
+    ("{prog} update-db --yes", "Update since the last recorded sync."),
+    ("{prog} update-db --yes --since 2026-03-01", "Explicit start date."),
+    ("{prog} update-db --dry-run", "Preview only — no writes."),
+    ("{prog} update-db --yes --quiet", "Cron/unattended one-line output."),
+)
 
-@click.command("update")
+try:
+    from scitex_dev.ecosystem import CliHelp, Example, SpecCommand
+
+    _COMMAND_KWARGS = {
+        "cls": SpecCommand,
+        "help_spec": CliHelp(
+            summary=_HELP_SUMMARY,
+            description=_HELP_DESCRIPTION,
+            examples=tuple(Example(cmd, note) for cmd, note in _HELP_EXAMPLES),
+            exit_codes=((0, "success"), (1, "update failed"),
+                        (2, "refused: --yes missing on a mutating run")),
+        ),
+    }
+except ImportError:  # pragma: no cover — old scitex-dev without help_spec
+    _COMMAND_KWARGS = {
+        "help": "\n\n".join((_HELP_SUMMARY,) + _HELP_DESCRIPTION),
+    }
+
+
+@click.command("update-db", **_COMMAND_KWARGS)
 @click.option(
     "--db",
     "db_path",
@@ -34,35 +75,27 @@ import click
     "-y",
     "--yes",
     is_flag=True,
-    help="Skip confirmation prompts (for cron/unattended runs).",
+    help="Required for a real run (non-interactive CLI contract).",
 )
 @click.option(
     "--quiet",
     is_flag=True,
     help="Minimal stdout (for cron).",
 )
-def update_cmd(db_path, since, dry_run, yes, quiet):
-    """Incrementally update the local database from the CrossRef API.
-
-    Fetches works newer than the recorded last sync date from the
-    CrossRef REST API (deep-paged) and upserts them into the database.
-
-    \b
-    Example:
-      $ crossref-local update
-      $ crossref-local update --since 2026-03-01
-      $ crossref-local update --dry-run
-      $ crossref-local update --yes --quiet   # cron/unattended
-    """
+def update_db_cmd(db_path, since, dry_run, yes, quiet):
+    """Incrementally update the local database from the CrossRef API."""
     from .. import update as _update
 
     if not dry_run and not yes:
         target = db_path or "the auto-discovered database"
-        if not click.confirm(
-            f"Run incremental update against {target}?", default=True
-        ):
-            click.secho("Aborted.", fg="yellow", err=True)
-            sys.exit(1)
+        click.secho(
+            f"Refusing to update {target} without --yes/-y "
+            "(non-interactive CLI contract, audit §2). "
+            "Re-run with -y/--yes, or preview with --dry-run.",
+            fg="red",
+            err=True,
+        )
+        sys.exit(2)
 
     try:
         stats = _update(db_path=db_path, since=since, dry_run=dry_run)
