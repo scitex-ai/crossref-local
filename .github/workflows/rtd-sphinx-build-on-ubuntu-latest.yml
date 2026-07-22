@@ -12,7 +12,9 @@ jobs:
     # suppress the tag-push and release workflows when the auto-commit
     # is the most recent commit on develop at release time.
     if: "!contains(github.event.head_commit.message, 'docs(sphinx_html): refresh from CI build')"
-    runs-on: ubuntu-latest
+    # PS-169: hosted runners are forbidden (operator mandate 2026-07-14) —
+    # use the self-hosted pool, overridable via the CI_RUNS_ON repo variable.
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
     permissions:
       contents: write
     steps:
