@@ -47,7 +47,11 @@ class SearchResponse(BaseModel):
 
 
 class InfoResponse(BaseModel):
-    """Database info response."""
+    """Database info response.
+
+    ``counts_source`` labels how the counts were produced: ``"exact"``
+    (from the ``db_stats`` cache) or ``"estimated"`` (``MAX(rowid)``).
+    """
 
     name: str = "CrossRef Local API"
     version: str = __version__
@@ -56,6 +60,8 @@ class InfoResponse(BaseModel):
     total_papers: int
     fts_indexed: int
     citations: Optional[int] = 0
+    counts_source: str = "estimated"
+    counts_computed_at: Optional[str] = None
     database_path: str
 
 
