@@ -300,6 +300,11 @@ from .update import update_cmd
 
 cli.add_command(update_cmd)
 
+# Register refresh-stats command (extracted for the same line limit)
+from .stats import refresh_stats_cmd
+
+cli.add_command(refresh_stats_cmd)
+
 
 @cli.command("relay", context_settings=CONTEXT_SETTINGS)
 @click.option("--host", default=None, envvar="CROSSREF_LOCAL_HOST", help="Host to bind")

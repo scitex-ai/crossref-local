@@ -430,6 +430,22 @@ def differential_update(
         conn, "last_update_completed", time.strftime("%Y-%m-%d %H:%M:%S")
     )
     set_metadata(conn, "last_update_records", str(upserted))
+    conn.close()
+
+    # Refresh the db_stats exact-count cache so info() / the /info
+    # endpoint report exact counts without ever running COUNT(*)
+    # themselves (~17.5 s on the production DB). Slow here is fine —
+    # an update run already takes minutes.
+    try:
+        from crossref_local._core.stats import refresh_stats
+
+        refresh_stats(db_path)
+        logger.info("db_stats cache refreshed (exact counts)")
+    except ImportError:
+        logger.warning(
+            "crossref_local not importable — db_stats cache NOT "
+            "refreshed; run `crossref-local refresh-stats` manually"
+        )
 
     elapsed = time.time() - start_time
     logger.info("=" * 60)
@@ -438,7 +454,6 @@ def differential_update(
     logger.info(f"  New last_sync_date: {today}")
     logger.info(f"  Elapsed: {elapsed / 60:.1f} minutes")
 
-    conn.close()
     return {
         "records_upserted": upserted,
         "elapsed_seconds": elapsed,

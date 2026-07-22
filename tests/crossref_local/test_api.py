@@ -238,6 +238,20 @@ def test_info_dict_reports_positive_works_count(_db_info):
     assert _db_info["works"] > 0
 
 
+def test_info_dict_contains_counts_source_key(_db_info):
+    # Arrange
+    # Act
+    # Assert
+    assert "counts_source" in _db_info
+
+
+def test_info_counts_source_is_honest_label(_db_info):
+    # Arrange
+    # Act
+    # Assert
+    assert _db_info["counts_source"] in {"exact", "estimated", "unavailable"}
+
+
 # ---------- enrich() ----------
 
 

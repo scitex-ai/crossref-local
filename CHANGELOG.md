@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-22
+
+### Added
+- **`db_stats` exact-count cache** (`_core/stats.py`) — small table
+  `db_stats(table_name TEXT PRIMARY KEY, row_count INTEGER, computed_at TEXT)`
+  holding exact `COUNT(*)` results for `works` / `works_fts` / `citations`
+- `refresh_stats()` public API + `crossref-local refresh-stats` CLI command —
+  compute exact counts and write the cache (the only write path; also wired
+  into `crossref-local update` after a successful sync)
+- `counts_source` (`"exact"` / `"estimated"` / `"unavailable"`) and
+  `counts_computed_at` fields in `info()` and the HTTP `/info` response —
+  estimates are never silently presented as exact
+
+### Changed
+- **`info()` no longer full-scans large tables** (DB mode, async `aio.info()`,
+  and the server `/info` endpoint). Production measurements (2026-07-22):
+  `COUNT(*)` on works=167,008,748 rows took 0.42s, works_fts 12.70s (FTS5
+  scans everything), citations=1,788,599,072 rows 4.35s — ~17.5s per call.
+  Counts now come from the `db_stats` cache (exact) or `MAX(rowid)` estimates
+  (~0.02s); `info()` needs no write access, so read-only deployments work
+
 ## [0.4.0] - 2026-01-24
 
 ### Added

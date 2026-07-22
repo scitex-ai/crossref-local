@@ -86,32 +86,26 @@ def health():
 
 @app.get("/info")
 def info():
-    """Get database statistics."""
+    """Get database statistics.
+
+    Counts come from the ``db_stats`` cache (exact, written by
+    ``refresh_stats``) or ``MAX(rowid)`` estimates when the cache is
+    absent — never ``COUNT(*)`` full scans (~17.5 s on 167M+ rows).
+    ``counts_source`` labels which path produced the numbers.
+    """
     from .._core.db import get_db
+    from .._core.stats import get_counts
     from .models import InfoResponse
 
     db = get_db()
-
-    # Use MAX(rowid) as fast O(1) approximation (COUNT(*) is too slow on 167M+ rows)
-    row = db.fetchone("SELECT MAX(rowid) as count FROM works")
-    work_count = row["count"] if row else 0
-
-    try:
-        row = db.fetchone("SELECT MAX(rowid) as count FROM works_fts")
-        fts_count = row["count"] if row else 0
-    except Exception:
-        fts_count = 0
-
-    try:
-        row = db.fetchone("SELECT MAX(rowid) as count FROM citations")
-        citation_count = row["count"] if row else 0
-    except Exception:
-        citation_count = 0
+    counts = get_counts(db)
 
     return InfoResponse(
-        total_papers=work_count,
-        fts_indexed=fts_count,
-        citations=citation_count,
+        total_papers=counts["works"],
+        fts_indexed=counts["fts_indexed"],
+        citations=counts["citations"],
+        counts_source=counts["counts_source"],
+        counts_computed_at=counts["counts_computed_at"],
         database_path=str(db.db_path),
     )
 

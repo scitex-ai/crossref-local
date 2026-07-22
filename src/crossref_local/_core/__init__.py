@@ -13,6 +13,7 @@ from .api import (
     get_many,
     get_mode,
     info,
+    refresh_stats,
     search,
 )
 from .citations import (
@@ -41,6 +42,7 @@ __all__ = [
     "configure_remote",
     "get_mode",
     "info",
+    "refresh_stats",
     # Models
     "Work",
     "SearchResult",

@@ -12,10 +12,11 @@ Mode is auto-detected or can be set explicitly via:
 
 from typing import List, Optional
 
-from . import fts
+from . import fts, stats
 from .config import Config
 from .db import close_db, get_db
 from .models import SearchResult, Work
+from .stats import refresh_stats
 
 __all__ = [
     "search",
@@ -30,6 +31,7 @@ __all__ = [
     "enrich_dois",
     "get_mode",
     "info",
+    "refresh_stats",
     # Re-exported for convenience
     "Work",
     "SearchResult",
@@ -278,6 +280,13 @@ def info() -> dict:
     """
     Get database/API information.
 
+    Fast by design: counts come from the ``db_stats`` cache (exact,
+    written by :func:`refresh_stats`) or from ``MAX(rowid)`` estimates
+    when the cache is absent — never from ``COUNT(*)`` full scans
+    (~17.5 s on the production database). The ``counts_source`` field
+    labels which path produced the numbers (``"exact"`` /
+    ``"estimated"`` / ``"unavailable"``).
+
     Returns:
         Dictionary with database stats and mode info
     """
@@ -310,10 +319,19 @@ def info() -> dict:
                 result["works"] = info_data.get("total_papers", 0)
                 result["fts_indexed"] = info_data.get("fts_indexed", 0)
                 result["citations"] = info_data.get("citations", 0)
+                # Older servers do not send counts_source — label their
+                # MAX(rowid)-style numbers honestly as estimates.
+                result["counts_source"] = info_data.get(
+                    "counts_source", "estimated"
+                )
+                result["counts_computed_at"] = info_data.get(
+                    "counts_computed_at"
+                )
         except Exception:
             result["works"] = 0
             result["fts_indexed"] = 0
             result["citations"] = 0
+            result["counts_source"] = "unavailable"
             result["note"] = "/info timed out (server may need update)"
         finally:
             client.timeout = old_timeout
@@ -321,29 +339,13 @@ def info() -> dict:
 
     db = get_db()
 
-    # Get work count
-    row = db.fetchone("SELECT COUNT(*) as count FROM works")
-    work_count = row["count"] if row else 0
-
-    # Get FTS count
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM works_fts")
-        fts_count = row["count"] if row else 0
-    except Exception:
-        fts_count = 0
-
-    # Get citations count
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM citations")
-        citation_count = row["count"] if row else 0
-    except Exception:
-        citation_count = 0
+    # Cache-first counts (exact when db_stats is present, MAX(rowid)
+    # estimates otherwise). NEVER COUNT(*) — see _core/stats.py.
+    counts = stats.get_counts(db)
 
     return {
         "mode": "db",
         "status": "ok",
         "db_path": str(Config.get_db_path()),
-        "works": work_count,
-        "fts_indexed": fts_count,
-        "citations": citation_count,
+        **counts,
     }

@@ -127,6 +127,7 @@ from ._core import (
     configure_remote,
     get_mode,
     info,
+    refresh_stats,
     # Models
     Work,
     SearchResult,
@@ -199,6 +200,7 @@ __all__ = [
     "configure_remote",  # Backward compatibility alias
     "get_mode",
     "info",
+    "refresh_stats",
     # Data models
     "Work",
     "SearchResult",
