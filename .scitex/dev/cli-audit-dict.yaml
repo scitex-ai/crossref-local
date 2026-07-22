@@ -9,3 +9,12 @@
 
 intransitive_verbs:
   - relay
+
+# §1f verb-synonym exemptions — GRANDFATHERED published commands, not
+# endorsements. Both renames (check-citations -> validate-citations,
+# show-status -> status) are tracked as debt in card
+# crossref-local-develop-ci-red-audit; drop the entry when the rename
+# lands with a Phase-W deprecated alias.
+verb_exceptions:
+  - check-citations  # why: published surface since 0.4.x (docs/skills/MCP parity reference it); rename to validate-citations tracked in card crossref-local-develop-ci-red-audit
+  - show-status  # why: published surface with a `status` alias already; rename to a `status` leaf tracked in card crossref-local-develop-ci-red-audit
