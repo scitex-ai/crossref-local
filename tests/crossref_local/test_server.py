@@ -152,6 +152,23 @@ def test_info_endpoint_total_papers_field_is_integer(client):
     assert isinstance(data["total_papers"], int)
 
 
+def test_info_endpoint_includes_counts_source_field(client):
+    # Arrange
+    # Act
+    data = client.get("/info").json()
+    # Assert
+    assert "counts_source" in data
+
+
+def test_info_endpoint_counts_source_is_honest_label(client):
+    # Arrange
+    # Act
+    data = client.get("/info").json()
+    # Assert — cache-backed "exact" or MAX(rowid) "estimated"; never a
+    # silent COUNT(*) full scan
+    assert data["counts_source"] in {"exact", "estimated"}
+
+
 # ---------- /works search ----------
 
 
