@@ -96,29 +96,17 @@ def _exists_sync(doi: str) -> bool:
 
 
 def _info_sync() -> dict:
-    """Thread-safe sync info."""
+    """Thread-safe sync info.
+
+    Counts come from the ``db_stats`` cache (exact) or ``MAX(rowid)``
+    estimates — never ``COUNT(*)`` full scans. See ``_core/stats.py``.
+    """
+    from .._core.stats import get_counts as _get_counts
+
     db = _get_thread_db()
-
-    row = db.fetchone("SELECT COUNT(*) as count FROM works")
-    work_count = row["count"] if row else 0
-
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM works_fts")
-        fts_count = row["count"] if row else 0
-    except Exception:
-        fts_count = 0
-
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM citations")
-        citation_count = row["count"] if row else 0
-    except Exception:
-        citation_count = 0
-
     return {
         "db_path": str(_Config.get_db_path()),
-        "works": work_count,
-        "fts_indexed": fts_count,
-        "citations": citation_count,
+        **_get_counts(db),
     }
 
 
