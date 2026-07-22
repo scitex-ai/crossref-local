@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-07-22
+
+Release note: the v0.8.0 tag exists but was NEVER published to PyPI —
+its release workflow failed at the audit test gate (run 29887502634;
+PyPI still had 0.7.6). 0.8.1 carries the audit fixes and ships the
+0.8.0 feature set.
+
+### Changed
+- **CLI renames (audit-canonical verbs), old spellings kept as hidden
+  warn-phase deprecated aliases (removed in 0.10):**
+  - `refresh-stats` → `sync-stats` (§1f: 'refresh' is a non-canonical
+    synonym of sync; the Python API `refresh_stats()` is unchanged)
+  - `update` → `update-db` (§1: bare transitive verb at top level)
+  - top-level `skills` → `dev skills` (§13: self-maintenance nests
+    under `dev`)
+- `update-db` no longer prompts interactively: a real run without
+  `--yes/-y` refuses with exit 2 (§2 non-interactive CLI contract;
+  `click.confirm` removed)
+- `sync-stats` gained the §2 mutating-verb contract: `--yes/-y` required
+  for a real run (refuses with exit 2), `--dry-run` shows the current
+  cache/estimate state without writing
+- `sync-stats` / `update-db` help is spec-built via CliHelp (§4b)
+- CI runners (PS-169, operator mandate 2026-07-14): deleted the
+  `newb-docs-quality-on-ubuntu-latest` workflow (fleet directive);
+  Sphinx docs build now runs on the self-hosted pool via `CI_RUNS_ON`
+
+### Fixed
+- Audit conformance test (`tests/develop/test_audit.py`) passes again:
+  §1f exemptions for the pre-existing `check-citations` / `show-status`
+  verbs (`.scitex/dev/cli-audit-dict.yaml` `verb_exceptions:` with
+  inline whys), §4b grandfathered for the 12 legacy free-form help
+  screens, both tracked in card crossref-local-develop-ci-red-audit;
+  the audit now grades the checkout under test via an explicit `path`
+- STX-TQ005 fixture hygiene: resource-acquiring fixtures in
+  `test_stats.py` / `test_cli_update.py` now `yield` with teardown
+
 ## [0.8.0] - 2026-07-22
 
 ### Added

@@ -12,7 +12,9 @@ jobs:
     # suppress the tag-push and release workflows when the auto-commit
     # is the most recent commit on develop at release time.
     if: "!contains(github.event.head_commit.message, 'docs(sphinx_html): refresh from CI build')"
-    runs-on: ubuntu-latest
+    # PS-169: hosted runners are forbidden (operator mandate 2026-07-14) —
+    # use the self-hosted pool, overridable via the CI_RUNS_ON repo variable.
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["self-hosted","Linux","X64","scitex-ci"]') }}
     permissions:
       contents: write
     steps:
@@ -24,6 +26,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Create per-job venv (self-hosted shared-cache isolation)
+        # Self-hosted runners share one read-only tool-cache + home, so
+        # pip-installing into the base interpreter is blocked (PEP 668) and
+        # would race across repos. A per-job venv on the runner's local
+        # $RUNNER_TEMP isolates deps; GITHUB_PATH makes later steps use it.
+        # (Same pattern as scitex-dev's rtd-sphinx workflow.)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
 
       - name: Install package + docs deps
         run: pip install -e ".[docs]"

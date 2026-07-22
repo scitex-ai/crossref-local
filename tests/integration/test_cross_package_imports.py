@@ -18,6 +18,7 @@ CROSS_PACKAGE_IMPORTS = [
     "scitex_dev._cli._completion",
     "scitex_dev.cli",
     "scitex_dev.decorators",
+    "scitex_dev.ecosystem",
 ]
 
 

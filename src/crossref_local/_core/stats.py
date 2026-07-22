@@ -134,7 +134,7 @@ def refresh_stats(db_path: _Optional[str | _Path] = None) -> dict:
     """Compute exact ``COUNT(*)`` per table and write the cache.
 
     Slow by design (~17.5 s on the production database) — run it from
-    the ingest/update pipeline or ``crossref-local refresh-stats``, not
+    the ingest/update pipeline or ``crossref-local sync-stats``, not
     from ``info()``. Requires write access (creates ``db_stats`` if
     absent).
 

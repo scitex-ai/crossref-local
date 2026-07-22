@@ -44,8 +44,9 @@ _DB_OPTIONAL_TEST_MODULES = frozenset(
         "test_cross_package_imports",
         "test_audit",
         "test_paths_runtime",
-        # Builds its own tiny SQLite DBs — no shared fixture DB needed.
+        # Build their own tiny SQLite DBs — no shared fixture DB needed.
         "test_stats",
+        "test_cli_stats",
     }
 )
 

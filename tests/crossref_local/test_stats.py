@@ -29,34 +29,36 @@ def tmp_db(tmp_path):
     """Create a small crossref-shaped SQLite DB (no db_stats table)."""
     path = tmp_path / "mini_crossref.db"
     conn = sqlite3.connect(str(path))
-    conn.execute(
-        "CREATE TABLE works (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "doi VARCHAR(255), metadata BLOB)"
-    )
-    for i in range(WORKS_ROWS):
+    try:
         conn.execute(
-            "INSERT INTO works (doi, metadata) VALUES (?, ?)",
-            (f"10.1234/work{i}", "{}"),
+            "CREATE TABLE works (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "doi VARCHAR(255), metadata BLOB)"
         )
-    conn.execute(
-        "CREATE VIRTUAL TABLE works_fts USING fts5(title, abstract)"
-    )
-    for i in range(FTS_ROWS):
+        for i in range(WORKS_ROWS):
+            conn.execute(
+                "INSERT INTO works (doi, metadata) VALUES (?, ?)",
+                (f"10.1234/work{i}", "{}"),
+            )
         conn.execute(
-            "INSERT INTO works_fts (title, abstract) VALUES (?, ?)",
-            (f"title {i}", f"abstract {i}"),
+            "CREATE VIRTUAL TABLE works_fts USING fts5(title, abstract)"
         )
-    conn.execute(
-        "CREATE TABLE citations (citing_doi TEXT, cited_doi TEXT)"
-    )
-    for i in range(CITATION_ROWS):
+        for i in range(FTS_ROWS):
+            conn.execute(
+                "INSERT INTO works_fts (title, abstract) VALUES (?, ?)",
+                (f"title {i}", f"abstract {i}"),
+            )
         conn.execute(
-            "INSERT INTO citations (citing_doi, cited_doi) VALUES (?, ?)",
-            (f"10.1234/work{i % WORKS_ROWS}", "10.1234/work0"),
+            "CREATE TABLE citations (citing_doi TEXT, cited_doi TEXT)"
         )
-    conn.commit()
-    conn.close()
-    return path
+        for i in range(CITATION_ROWS):
+            conn.execute(
+                "INSERT INTO citations (citing_doi, cited_doi) VALUES (?, ?)",
+                (f"10.1234/work{i % WORKS_ROWS}", "10.1234/work0"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    yield path
 
 
 @pytest.fixture

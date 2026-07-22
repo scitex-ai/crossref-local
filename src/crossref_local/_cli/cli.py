@@ -295,15 +295,21 @@ from .mcp import mcp
 
 cli.add_command(mcp)
 
-# Register update command (extracted to its own module for the line limit)
-from .update import update_cmd
+# Register update-db command (extracted to its own module for the line limit)
+from .update import update_db_cmd
 
-cli.add_command(update_cmd)
+cli.add_command(update_db_cmd)
 
-# Register refresh-stats command (extracted for the same line limit)
-from .stats import refresh_stats_cmd
+# Register sync-stats command (extracted for the same line limit)
+from .stats import sync_stats_cmd
 
-cli.add_command(refresh_stats_cmd)
+cli.add_command(sync_stats_cmd)
+
+# Old spellings (`update`, `refresh-stats`) — hidden warn-phase aliases
+# for the 0.8.1 audit renames (see _cli/deprecations.py).
+from .deprecations import register_deprecated_aliases
+
+register_deprecated_aliases(cli)
 
 
 @cli.command("relay", context_settings=CONTEXT_SETTINGS)
@@ -410,12 +416,43 @@ def list_python_apis(verbose, max_depth, as_json):
         click.echo("Or use: scitex introspect api crossref_local")
 
 
-# Register docs and skills subcommands (from scitex-dev)
+# Register docs and skills subcommands (from scitex-dev). Audit §13:
+# self-maintenance commands nest under `dev`, so skills mounts as
+# `crossref-local dev skills`; the old top-level `skills` stays as a
+# hidden warn-phase deprecated alias.
 try:
     from scitex_dev.cli import docs_click_group, skills_click_group
 
     cli.add_command(docs_click_group(package="crossref-local"))
-    cli.add_command(skills_click_group(package="crossref-local"))
+    _skills_group = skills_click_group(package="crossref-local")
+    try:
+        from scitex_dev.ecosystem import CliHelp, SpecGroup
+
+        _dev_group = SpecGroup(
+            "dev",
+            help_spec=CliHelp(
+                summary="Package self-maintenance commands (doctrine §13)."
+            ),
+        )
+        _dev_group.add_command(_skills_group)
+        cli.add_command(_dev_group)
+        # Audit corpus tension: §13 wants `skills` NESTED under `dev`,
+        # while §1a REQUIRES a top-level `skills` GROUP whenever the
+        # package ships _skills/. Bridge: a second, HIDDEN skills-group
+        # instance at top level carrying the Phase-W `_deprecated_alias`
+        # metadata (§13's documented escape hatch), so `dev skills` is
+        # canonical and old `crossref-local skills ...` keeps working.
+        _skills_alias = skills_click_group(package="crossref-local")
+        _skills_alias.hidden = True
+        _skills_alias._deprecated_alias = {
+            "target": "dev skills",
+            "remove_in": "0.10",
+            "phase": "warn",
+        }
+        cli.add_command(_skills_alias)
+    except ImportError:
+        # Old scitex-dev without ecosystem helpers — legacy top-level mount.
+        cli.add_command(_skills_group)
 except ImportError:
     pass
 
