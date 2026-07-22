@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "crossref-local"
-version = "0.8.0"
+version = "0.8.1"
 description = "Local CrossRef database with 167M+ works and full-text search"
 readme = "README.md"
 license = "AGPL-3.0-only"
