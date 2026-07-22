@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the incremental ``crossref-local update`` command + engine.
+"""Tests for the incremental ``crossref-local update-db`` command + engine.
 
 These tests NEVER touch the network or the ~1.5 TB CrossRef DB: the sync
 engine's HTTP fetcher is injected with a fake page-feed, and all writes
@@ -46,15 +46,17 @@ def temp_db(tmp_path):
     """Create a tiny SQLite with the minimal works/FTS/metadata schema."""
     db_path = tmp_path / "crossref.db"
     conn = sqlite3.connect(str(db_path))
-    engine.ensure_metadata_table(conn)
-    engine.create_works_table(conn.cursor())
-    conn.execute(
-        "CREATE VIRTUAL TABLE works_fts USING fts5("
-        "doi, title, abstract, authors, content='')"
-    )
-    conn.commit()
-    conn.close()
-    return db_path
+    try:
+        engine.ensure_metadata_table(conn)
+        engine.create_works_table(conn.cursor())
+        conn.execute(
+            "CREATE VIRTUAL TABLE works_fts USING fts5("
+            "doi, title, abstract, authors, content='')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    yield db_path
 
 
 def _work(doi, title="A Title"):
@@ -289,7 +291,7 @@ def test_dry_run_leaves_last_sync_date_unset(temp_db):
 # ---------------------------------------------------------------------------
 def test_cli_update_help_exits_zero(runner):
     # Arrange
-    args = ["update", "--help"]
+    args = ["update-db", "--help"]
     # Act
     result = runner.invoke(cli, args)
     # Assert
@@ -298,7 +300,7 @@ def test_cli_update_help_exits_zero(runner):
 
 def test_cli_update_help_lists_since_option(runner):
     # Arrange
-    args = ["update", "--help"]
+    args = ["update-db", "--help"]
     # Act
     result = runner.invoke(cli, args)
     # Assert
@@ -307,7 +309,7 @@ def test_cli_update_help_lists_since_option(runner):
 
 def test_cli_update_dry_run_exits_zero(runner, temp_db, feed_env):
     # Arrange — real code path: offline feed + real temp DB, no network.
-    args = ["update", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
+    args = ["update-db", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
     # Act
     result = runner.invoke(cli, args)
     # Assert
@@ -316,7 +318,7 @@ def test_cli_update_dry_run_exits_zero(runner, temp_db, feed_env):
 
 def test_cli_update_dry_run_writes_no_rows(runner, temp_db, feed_env):
     # Arrange
-    args = ["update", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
+    args = ["update-db", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
     # Act
     runner.invoke(cli, args)
     # Assert
@@ -328,7 +330,7 @@ def test_cli_update_dry_run_writes_no_rows(runner, temp_db, feed_env):
 
 def test_cli_update_yes_upserts_rows(runner, temp_db, feed_env):
     # Arrange — --yes runs unattended against the real engine + feed.
-    args = ["update", "--db", str(temp_db), "--yes", "--since", "2026-01-01"]
+    args = ["update-db", "--db", str(temp_db), "--yes", "--since", "2026-01-01"]
     # Act
     runner.invoke(cli, args)
     # Assert
@@ -341,7 +343,7 @@ def test_cli_update_yes_upserts_rows(runner, temp_db, feed_env):
 def test_cli_update_quiet_prints_one_line_summary(runner, temp_db, feed_env):
     # Arrange
     args = [
-        "update", "--db", str(temp_db),
+        "update-db", "--db", str(temp_db),
         "--yes", "--quiet", "--since", "2026-01-01",
     ]
     # Act
@@ -357,13 +359,42 @@ def test_cli_update_reports_nonzero_exit_on_error(runner, tmp_path, feed_env):
         tmp_path / "does_not_exist.py"
     )
     try:
-        args = ["update", "--db", str(tmp_path / "x.db"), "--yes"]
+        args = ["update-db", "--db", str(tmp_path / "x.db"), "--yes"]
         # Act
         result = runner.invoke(cli, args)
     finally:
         os.environ.pop("CROSSREF_LOCAL_DIFFERENTIAL_UPDATE_SCRIPT", None)
     # Assert
     assert result.exit_code != 0
+
+
+def test_cli_update_db_refuses_without_yes(runner, temp_db, feed_env):
+    # Arrange — §2 non-interactive contract: a real run without --yes
+    # must refuse (exit 2), never prompt.
+    args = ["update-db", "--db", str(temp_db), "--since", "2026-01-01"]
+    # Act
+    result = runner.invoke(cli, args)
+    # Assert
+    assert result.exit_code == 2
+
+
+def test_cli_update_db_refusal_mentions_yes_flag(runner, temp_db, feed_env):
+    # Arrange
+    args = ["update-db", "--db", str(temp_db), "--since", "2026-01-01"]
+    # Act
+    result = runner.invoke(cli, args)
+    # Assert
+    assert "--yes" in result.output
+
+
+def test_cli_deprecated_update_alias_still_works(runner, temp_db, feed_env):
+    # Arrange — Phase-W alias: old `update` spelling forwards to
+    # `update-db` (dry-run path needs no --yes).
+    args = ["update", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
+    # Act
+    result = runner.invoke(cli, args)
+    # Assert
+    assert result.exit_code == 0
 
 
 # EOF
