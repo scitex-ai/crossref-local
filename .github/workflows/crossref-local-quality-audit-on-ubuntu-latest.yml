@@ -7,7 +7,7 @@ name: quality
 # standalone gate so an audit regression is visible even when the matrix
 # is skipped.
 #
-# --new-only: this package carries grandfathered pre-existing audit debt
+#: this package carries grandfathered pre-existing audit debt
 # (CLI naming on the `relay` leaf + a PATH.yaml example wrapper). The
 # gate fails only on NEWLY introduced violations so the release wave is
 # not blocked on debt that predates it; clear the baseline in a dedicated
@@ -45,4 +45,4 @@ jobs:
           pip install "scitex-dev[cli-audit]"
 
       - name: Run scitex-dev ecosystem audit-all
-        run: scitex-dev ecosystem audit-all crossref-local --no-version-check --new-only
+        run: scitex-dev ecosystem audit-all crossref-local --no-version-check
