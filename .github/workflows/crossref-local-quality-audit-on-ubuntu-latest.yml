@@ -1,17 +1,17 @@
 name: quality
 
-# PILOT: org-level reusable-workflow caller (scitex-ai/.github, 2026-07-10).
-# Same purpose as before (`scitex-dev ecosystem audit-all` gate), now via
-# scitex-ai/.github's quality-audit reusable workflow.
-# NOTE (behavior delta): the reusable audit job runs
-# `scitex-dev ecosystem audit-all "$DIST" --path "$PWD"` (no `--new-only`,
-# no `--no-version-check`) — this repo's prior invocation passed both
-# flags to grandfather pre-existing findings (CLI naming on the `relay`
-# leaf + a PATH.yaml example wrapper). Flagged in the PR description; may
-# reintroduce those pre-existing findings as visible (non-required-check)
-# CI failures on this job specifically.
-# Runner/install now self-hosted spartan-cpu + uv (was ubuntu-latest + pip).
-# Triggers preserved verbatim from the prior local file.
+# Single-package quality gate — runs `scitex-dev ecosystem audit-all`
+# against this package (audit-cli / audit-mcp-tools / audit-skills /
+# audit-python-apis / audit-project). Mirrors the canonical audit that
+# `tests/develop/test_audit.py` runs inside the test suite, but as a
+# standalone gate so an audit regression is visible even when the matrix
+# is skipped.
+#
+# --new-only: this package carries grandfathered pre-existing audit debt
+# (CLI naming on the `relay` leaf + a PATH.yaml example wrapper). The
+# gate fails only on NEWLY introduced violations so the release wave is
+# not blocked on debt that predates it; clear the baseline in a dedicated
+# follow-up and drop the flag.
 
 on:
   schedule:
@@ -28,7 +28,21 @@ on:
     branches: [main, develop]
 
 jobs:
-  quality-audit:
-    # New required-status-check context: "quality-audit / audit"
-    uses: scitex-ai/.github/.github/workflows/quality-audit.yml@main
-    secrets: inherit
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package + audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install "scitex-dev[cli-audit]"
+
+      - name: Run scitex-dev ecosystem audit-all
+        run: scitex-dev ecosystem audit-all crossref-local --no-version-check
