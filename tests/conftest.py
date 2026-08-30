@@ -254,8 +254,23 @@ def pytest_configure(config):
     if testing is not None:
         try:
             dsn = _SESSION_STACK.enter_context(testing.writable_dsn())
-        except RuntimeError as exc:
-            print(f"\nNo writable PostgreSQL for tests: {exc}")
+        except Exception as exc:  # noqa: BLE001 - see below; never abort here
+            # DELIBERATELY BROADER THAN RuntimeError, and the difference took
+            # the whole suite down once. `writable_dsn` documents RuntimeError
+            # for "no route available", but its private-cluster fallback shells
+            # out to `initdb`/`pg_ctl` and can therefore also raise
+            # `subprocess.TimeoutExpired` or `CalledProcessError` — neither of
+            # which is a RuntimeError. Measured on the CI runner 2026-08-30:
+            # PostgreSQL 16 IS installed there, so the fallback was taken
+            # rather than skipped, `pg_ctl ... start` hung, and the timeout
+            # escaped `pytest_configure` as an INTERNALERROR with exit code 3.
+            # Not one test failed; the session simply died before running.
+            #
+            # Provisioning a store for the suite is a PROBE, not the thing
+            # under test, so every way it can fail is "no store — skip", never
+            # "abort the run". The reason is printed so a real outage is still
+            # diagnosable rather than silently absorbed.
+            print(f"\nNo writable PostgreSQL for tests: {exc!r}")
         else:
             scoped = _SESSION_STACK.enter_context(
                 testing.ephemeral_schema(dsn, prefix="crossref_session")
@@ -347,8 +362,12 @@ def store_env():
         with contextlib.ExitStack() as stack:
             try:
                 dsn = stack.enter_context(testing.writable_dsn())
-            except RuntimeError as exc:
-                pytest.skip(f"no writable PostgreSQL for store tests: {exc}")
+            except Exception as exc:  # noqa: BLE001 - a probe, not the subject
+                # Same reasoning as `pytest_configure`: the private-cluster
+                # fallback can fail with a subprocess error rather than the
+                # documented RuntimeError, and a store this fixture cannot
+                # provision is a skip, not an error in what is being tested.
+                pytest.skip(f"no writable PostgreSQL for store tests: {exc!r}")
             scoped = stack.enter_context(
                 testing.ephemeral_schema(dsn, prefix="crossref")
             )

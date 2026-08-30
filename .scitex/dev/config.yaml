@@ -1,4 +1,8 @@
 # scitex-dev project-type config
+# vendor/ holds two pre-pip-install vendored projects used as build-time
+# references for the retired corpus-build pipeline. Not imported by src/,
+# not shipped in the wheel. Nothing under src/ imports them any more; see
+# docs/adr/0001-corpus-moves-to-the-shared-store.md.
 
 project-type:
   - pip
@@ -6,15 +10,6 @@ project-type:
 audit:
   root-whitelist:
     dirs:
-      # vendor/ holds two pre-pip-install vendored upstream projects: the
-      # bulk loader for the retired file-backed corpus, and a CrossRef
-      # Public Data File API client. Both were build-time references for
-      # the retired pipeline; nothing outside vendor/ imports either, and
-      # the ingest engine (crossref_local._core.ingest) deliberately does
-      # not. This entry is therefore dead weight and should be deleted in
-      # the same change that deletes vendor/ — not before, because the
-      # auditor walks the filesystem and would flag the directory the
-      # moment this line goes.
       - vendor
       # CI-side install artefacts that `pip install -e ".[all]"`
       # creates on the GitHub Actions runner and not in the wheel.
@@ -23,3 +18,25 @@ audit:
       - lib64
     files:
       - codecov.yml
+
+  exemptions:
+    PS-231:
+      - path: .github/workflows/rtd-sphinx-build-on-ubuntu-latest.yml
+        line: 0
+        reason: >-
+          PS-231's own BLOCKER 2, and it holds here on measurement rather
+          than by analogy. The org reusable `rtd-sphinx-build` is
+          BUILD-ONLY; this leaf workflow also PUBLISHES. On a develop push
+          it rebuilds the bundle, then `git add` / `git commit` /
+          `git push`es src/crossref_local/_sphinx_html (67 tracked files),
+          and pyproject packages the tree wholesale
+          (`[tool.hatch.build.targets.wheel] packages = ["src/crossref_local"]`),
+          so that bundle SHIPS INSIDE THE WHEEL. Converting this to a bare
+          `uses:` would keep building and stop publishing — CI green, the
+          documentation reaching users frozen at whatever last landed, and
+          nothing anywhere saying so. The PR gate would also be lost: this
+          file builds with `sphinx-build -W` (warnings are errors) and the
+          org build does not, so the conversion would silently drop a gate
+          as well as a publish step. Re-evaluate if the org reusable gains
+          a publish step and a `-W` mode, at which point this should be
+          converted rather than exempted.
