@@ -1,62 +1,33 @@
 #!/usr/bin/env python3
 """Tests for the incremental ``crossref-local update-db`` command + engine.
 
-These tests NEVER touch the network or the ~1.5 TB CrossRef DB: the sync
-engine's HTTP fetcher is injected with a fake page-feed, and all writes
-go to a tiny temp SQLite carrying only the minimal ``works`` / ``_metadata``
-/ ``works_fts`` schema.
+These tests NEVER touch the network and never touch the production corpus:
+the page fetcher is injected (or supplied through the real
+``CROSSREF_LOCAL_UPDATE_FEED`` offline-feed file the engine already
+supports), and every write lands in a throwaway schema opened by the
+``store_env`` fixture.
+
+The engine used to live at ``scripts/database/10_differential_update.py``
+and was loaded here by file path through ``importlib.spec_from_file_location``
+— the script is gone and the engine is now an ordinary module, so it is
+imported by name like anything else.
 """
 
-import importlib.util
 import json
 import os
-import sqlite3
-from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
+from crossref_local._core import fts, ingest
+from crossref_local._core.store import sync_state_store, works_store
 from crossref_local.cli import cli
 
-# ---------------------------------------------------------------------------
-# Load the sync engine by file path (it lives under scripts/, not the package).
-# ---------------------------------------------------------------------------
-_ENGINE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "scripts"
-    / "database"
-    / "10_differential_update.py"
-)
-_spec = importlib.util.spec_from_file_location("_diff_update_engine", _ENGINE_PATH)
-engine = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(engine)
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 @pytest.fixture
 def runner():
     """Create CLI test runner."""
     return CliRunner()
-
-
-@pytest.fixture
-def temp_db(tmp_path):
-    """Create a tiny SQLite with the minimal works/FTS/metadata schema."""
-    db_path = tmp_path / "crossref.db"
-    conn = sqlite3.connect(str(db_path))
-    try:
-        engine.ensure_metadata_table(conn)
-        engine.create_works_table(conn.cursor())
-        conn.execute(
-            "CREATE VIRTUAL TABLE works_fts USING fts5("
-            "doi, title, abstract, authors, content='')"
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    yield db_path
 
 
 def _work(doi, title="A Title"):
@@ -69,54 +40,47 @@ def _work(doi, title="A Title"):
     }
 
 
+class _PagedFetcher:
+    """A page fetcher that serves fixed pages and counts how often it ran.
+
+    Not a mock of the HTTP layer: it is the injection point the engine
+    documents (``fetch_page``), holding real page payloads. The call count
+    is what makes "stops on a short page WITHOUT a second fetch" assertable
+    — an engine that kept paging would ask for a page that does not exist.
+    """
+
+    def __init__(self, pages):
+        self.pages = pages
+        self.calls = 0
+
+    def __call__(self, since, cursor, rows, mailto):
+        page = self.pages[self.calls]
+        self.calls += 1
+        return page
+
+
 @pytest.fixture
 def feed_env(tmp_path):
-    """Point the real ``update()`` code path at an offline feed + script.
+    """Point the real ``update()`` code path at an offline feed file.
 
-    Substitutes reality (real JSON file + real env vars) for the network
-    so the CLI exercises the true ``crossref_local.update`` -> engine path
-    with no mocks:
-
-    * ``CROSSREF_LOCAL_UPDATE_FEED`` — a JSON list of API pages served in
-      place of the network fetch.
-    * ``CROSSREF_LOCAL_DIFFERENTIAL_UPDATE_SCRIPT`` — pins the engine to
-      THIS worktree's script regardless of where the package is installed.
-
-    Both env vars are set here and popped on teardown.
+    Substitutes reality (a real JSON file read by the engine's own feed
+    loader) for the network, so the CLI exercises the true
+    ``crossref_local.update`` -> ingest path with no mocks. The env var is
+    set here and restored on teardown.
     """
     pages = [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
     feed_path = tmp_path / "feed.json"
     feed_path.write_text(json.dumps(pages), encoding="utf-8")
-    keys = {
-        "CROSSREF_LOCAL_UPDATE_FEED": str(feed_path),
-        "CROSSREF_LOCAL_DIFFERENTIAL_UPDATE_SCRIPT": str(_ENGINE_PATH),
-    }
-    prior = {k: os.environ.get(k) for k in keys}
-    os.environ.update(keys)
+    key = "CROSSREF_LOCAL_UPDATE_FEED"
+    prior = os.environ.get(key)
+    os.environ[key] = str(feed_path)
     try:
         yield feed_path
     finally:
-        for k, v in prior.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-
-
-def _paged_fetcher(pages):
-    """Return a fake ``fetch_page`` yielding the given pages by cursor.
-
-    ``pages`` is a list of message dicts; each is returned in order,
-    advancing the cursor so deep-paging terminates on the last (short) page.
-    """
-    state = {"i": 0}
-
-    def fetch(since, cursor, rows, mailto):
-        idx = state["i"]
-        state["i"] += 1
-        return pages[idx]
-
-    return fetch
+        if prior is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = prior
 
 
 # ---------------------------------------------------------------------------
@@ -124,15 +88,16 @@ def _paged_fetcher(pages):
 # ---------------------------------------------------------------------------
 def test_iter_crossref_works_follows_cursor_across_pages():
     # Arrange
-    pages = [
-        {"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": "c2"},
-        {"items": [_work("10.1/c")], "next-cursor": "c3"},
-    ]
-    fetch = _paged_fetcher(pages)
+    fetch = _PagedFetcher(
+        [
+            {"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": "c2"},
+            {"items": [_work("10.1/c")], "next-cursor": "c3"},
+        ]
+    )
     # Act
     dois = [
-        w["DOI"]
-        for w in engine.iter_crossref_works(
+        work["DOI"]
+        for work in ingest.iter_crossref_works(
             since="2026-01-01", rows=2, fetch_page=fetch
         )
     ]
@@ -140,150 +105,210 @@ def test_iter_crossref_works_follows_cursor_across_pages():
     assert dois == ["10.1/a", "10.1/b", "10.1/c"]
 
 
-def test_iter_crossref_works_stops_on_short_page():
-    # Arrange — a single short page must end paging without a 2nd fetch.
-    pages = [{"items": [_work("10.1/a")], "next-cursor": "c2"}]
-    fetch = _paged_fetcher(pages)
+@pytest.fixture
+def short_first_page():
+    """Drain the iterator over a single short page; return the fetcher."""
+    fetch = _PagedFetcher([{"items": [_work("10.1/a")], "next-cursor": "c2"}])
+    list(ingest.iter_crossref_works(since="2026-01-01", rows=2, fetch_page=fetch))
+    return fetch
+
+
+def test_iter_crossref_works_stops_on_a_short_page(short_first_page):
+    # Arrange
+    # Act
+    calls = short_first_page.calls
+    # Assert — a short page is the deep-paging terminator; asking again
+    # would be a wasted round trip (and here, an IndexError).
+    assert calls == 1
+
+
+def test_iter_crossref_works_yields_the_short_page_contents():
+    # Arrange
+    fetch = _PagedFetcher([{"items": [_work("10.1/a")], "next-cursor": "c2"}])
     # Act
     result = list(
-        engine.iter_crossref_works(since="2026-01-01", rows=2, fetch_page=fetch)
+        ingest.iter_crossref_works(since="2026-01-01", rows=2, fetch_page=fetch)
     )
     # Assert
     assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------
-# Upsert writes rows
+# Normalisation
 # ---------------------------------------------------------------------------
-def test_update_upserts_rows_into_works(temp_db):
+def test_work_values_lowercases_the_doi():
     # Arrange
-    pages = [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
+    item = _work("10.1/MixedCase")
     # Act
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10, fetch_page=fetch
-    )
+    values = ingest.work_values(item)
     # Assert
-    conn = sqlite3.connect(str(temp_db))
-    count = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
-    conn.close()
-    assert count == 2
+    assert values["doi"] == "10.1/mixedcase"
 
 
-def test_update_reports_records_upserted(temp_db):
+def test_work_values_returns_none_for_an_item_with_no_doi():
+    # Arrange — nothing could key it, and inventing a key would put a
+    # record in the collection that no lookup could ever find again.
+    item = {"title": ["No DOI here"]}
+    # Act
+    values = ingest.work_values(item)
+    # Assert
+    assert values is None
+
+
+def test_work_values_flattens_the_author_list_for_search():
     # Arrange
-    pages = [{"items": [_work("10.1/a")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
+    item = _work("10.1/a")
     # Act
-    stats = engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10, fetch_page=fetch
-    )
+    values = ingest.work_values(item)
     # Assert
-    assert stats["records_upserted"] == 1
-
-
-def test_update_is_idempotent_on_resync(temp_db):
-    # Arrange — same DOI seen twice must not create a duplicate row.
-    page = [{"items": [_work("10.1/a")], "next-cursor": None}]
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10,
-        fetch_page=_paged_fetcher([dict(page[0])]),
-    )
-    # Act
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10,
-        fetch_page=_paged_fetcher([dict(page[0])]),
-    )
-    # Assert
-    conn = sqlite3.connect(str(temp_db))
-    count = conn.execute(
-        "SELECT COUNT(*) FROM works WHERE doi = '10.1/a'"
-    ).fetchone()[0]
-    conn.close()
-    assert count == 1
-
-
-def test_update_maintains_fts_index(temp_db):
-    # Arrange
-    pages = [{"items": [_work("10.1/a", title="Neurons")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10, fetch_page=fetch
-    )
-    # Act
-    conn = sqlite3.connect(str(temp_db))
-    hits = conn.execute(
-        "SELECT COUNT(*) FROM works_fts WHERE works_fts MATCH 'Neurons'"
-    ).fetchone()[0]
-    conn.close()
-    # Assert
-    assert hits == 1
+    assert values["authors"] == "Ada Lovelace"
 
 
 # ---------------------------------------------------------------------------
-# last_sync_date advances only after success
+# Upsert writes records
 # ---------------------------------------------------------------------------
-def test_update_advances_last_sync_date(temp_db):
-    # Arrange
-    pages = [{"items": [_work("10.1/a")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
-    # Act
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10, fetch_page=fetch
+@pytest.fixture
+def after_two_item_update(store_env):
+    """Run the engine over one page of two works."""
+    fetch = _PagedFetcher(
+        [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
     )
+    stats = ingest.differential_update(
+        since="2026-01-01", rows=10, fetch_page=fetch, refresh_counts=False
+    )
+    return stats
+
+
+def test_update_upserts_one_record_per_work(after_two_item_update):
+    # Arrange
+    # Act
+    rows = works_store().rows()
     # Assert
-    conn = sqlite3.connect(str(temp_db))
-    value = engine.get_last_sync_date(conn)
-    conn.close()
+    assert len(rows) == 2
+
+
+def test_update_reports_the_number_of_records_upserted(after_two_item_update):
+    # Arrange
+    # Act
+    # Assert
+    assert after_two_item_update["records_upserted"] == 2
+
+
+def test_update_stores_the_searchable_title(after_two_item_update):
+    # Arrange
+    # Act
+    row = works_store().get({"doi": "10.1/a"})
+    # Assert
+    assert row.values["title"] == "A Title"
+
+
+@pytest.fixture
+def after_resync(store_env):
+    """Ingest the same DOI twice."""
+    for _attempt in range(2):
+        fetch = _PagedFetcher(
+            [{"items": [_work("10.1/a")], "next-cursor": None}]
+        )
+        ingest.differential_update(
+            since="2026-01-01", rows=10, fetch_page=fetch, refresh_counts=False
+        )
+    return store_env
+
+
+def test_resyncing_the_same_doi_keeps_one_record(after_resync):
+    # Arrange — the DOI is the identity, so a re-ingest updates in place.
+    # Act
+    rows = works_store().rows()
+    # Assert
+    assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# An upserted work is immediately searchable
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def after_upserting_neurons(store_env):
+    """Ingest one work whose title carries a distinctive term."""
+    fetch = _PagedFetcher(
+        [{"items": [_work("10.1/a", title="Neurons")], "next-cursor": None}]
+    )
+    ingest.differential_update(
+        since="2026-01-01", rows=10, fetch_page=fetch, refresh_counts=False
+    )
+    return store_env
+
+
+def test_an_upserted_work_is_findable_by_search(after_upserting_neurons):
+    # Arrange — searchable text is written in the SAME upsert as the rest
+    # of the record, so there is no second write that could be skipped.
+    # Act
+    dois = fts.search_dois("neurons")
+    # Assert
+    assert dois == ["10.1/a"]
+
+
+# ---------------------------------------------------------------------------
+# The watermark advances only after a successful run
+# ---------------------------------------------------------------------------
+def test_update_records_the_last_sync_date(after_two_item_update):
+    # Arrange
+    # Act
+    value = ingest.get_last_sync_date()
+    # Assert
     assert value is not None
+
+
+def test_update_records_the_number_of_records_in_sync_state(after_two_item_update):
+    # Arrange
+    # Act
+    row = sync_state_store().get({"key": "last_update_records"})
+    # Assert
+    assert row.values["value"] == "2"
 
 
 # ---------------------------------------------------------------------------
 # dry-run writes nothing
 # ---------------------------------------------------------------------------
-def test_dry_run_writes_no_rows(temp_db):
-    # Arrange
-    pages = [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
-    # Act
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10,
-        dry_run=True, fetch_page=fetch,
+@pytest.fixture
+def after_dry_run(store_env):
+    """Run the engine with ``dry_run=True``."""
+    fetch = _PagedFetcher(
+        [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
     )
-    # Assert
-    conn = sqlite3.connect(str(temp_db))
-    count = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
-    conn.close()
-    assert count == 0
-
-
-def test_dry_run_counts_would_be_upserts(temp_db):
-    # Arrange
-    pages = [{"items": [_work("10.1/a"), _work("10.1/b")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
-    # Act
-    stats = engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10,
-        dry_run=True, fetch_page=fetch,
+    return ingest.differential_update(
+        since="2026-01-01", rows=10, dry_run=True, fetch_page=fetch
     )
-    # Assert
-    assert stats["records_upserted"] == 2
 
 
-def test_dry_run_leaves_last_sync_date_unset(temp_db):
+def test_dry_run_writes_no_records(after_dry_run):
     # Arrange
-    pages = [{"items": [_work("10.1/a")], "next-cursor": None}]
-    fetch = _paged_fetcher(pages)
     # Act
-    engine.differential_update(
-        db_path=temp_db, since="2026-01-01", rows=10,
-        dry_run=True, fetch_page=fetch,
-    )
+    rows = works_store().rows()
     # Assert
-    conn = sqlite3.connect(str(temp_db))
-    value = engine.get_last_sync_date(conn)
-    conn.close()
+    assert rows == []
+
+
+def test_dry_run_still_counts_what_would_be_upserted(after_dry_run):
+    # Arrange
+    # Act
+    # Assert
+    assert after_dry_run["records_upserted"] == 2
+
+
+def test_dry_run_leaves_the_watermark_unset(after_dry_run):
+    # Arrange — an interrupted or previewed run must re-cover the same
+    # range next time, so it may not advance the watermark.
+    # Act
+    value = ingest.get_last_sync_date()
+    # Assert
     assert value is None
+
+
+def test_dry_run_labels_itself_in_the_returned_statistics(after_dry_run):
+    # Arrange
+    # Act
+    # Assert
+    assert after_dry_run["dry_run"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -307,94 +332,102 @@ def test_cli_update_help_lists_since_option(runner):
     assert "--since" in result.output
 
 
-def test_cli_update_dry_run_exits_zero(runner, temp_db, feed_env):
-    # Arrange — real code path: offline feed + real temp DB, no network.
-    args = ["update-db", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
-    # Act
-    result = runner.invoke(cli, args)
-    # Assert
-    assert result.exit_code == 0
-
-
-def test_cli_update_dry_run_writes_no_rows(runner, temp_db, feed_env):
-    # Arrange
-    args = ["update-db", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
-    # Act
-    runner.invoke(cli, args)
-    # Assert
-    conn = sqlite3.connect(str(temp_db))
-    count = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
-    conn.close()
-    assert count == 0
-
-
-def test_cli_update_yes_upserts_rows(runner, temp_db, feed_env):
-    # Arrange — --yes runs unattended against the real engine + feed.
-    args = ["update-db", "--db", str(temp_db), "--yes", "--since", "2026-01-01"]
-    # Act
-    runner.invoke(cli, args)
-    # Assert
-    conn = sqlite3.connect(str(temp_db))
-    count = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
-    conn.close()
-    assert count == 2
-
-
-def test_cli_update_quiet_prints_one_line_summary(runner, temp_db, feed_env):
-    # Arrange
-    args = [
-        "update-db", "--db", str(temp_db),
-        "--yes", "--quiet", "--since", "2026-01-01",
-    ]
-    # Act
-    result = runner.invoke(cli, args)
-    # Assert
-    assert result.output.strip().startswith("2 ")
-
-
-def test_cli_update_reports_nonzero_exit_on_error(runner, tmp_path, feed_env):
-    # Arrange — a bad script path makes the real update() raise; the CLI
-    # must surface that as a nonzero exit (no mocks, real error path).
-    os.environ["CROSSREF_LOCAL_DIFFERENTIAL_UPDATE_SCRIPT"] = str(
-        tmp_path / "does_not_exist.py"
+@pytest.fixture
+def cli_dry_run(runner, store_env, feed_env):
+    """Drive the CLI's dry-run path over the offline feed."""
+    return runner.invoke(
+        cli, ["update-db", "--dry-run", "--since", "2026-01-01"]
     )
-    try:
-        args = ["update-db", "--db", str(tmp_path / "x.db"), "--yes"]
-        # Act
-        result = runner.invoke(cli, args)
-    finally:
-        os.environ.pop("CROSSREF_LOCAL_DIFFERENTIAL_UPDATE_SCRIPT", None)
-    # Assert
-    assert result.exit_code != 0
 
 
-def test_cli_update_db_refuses_without_yes(runner, temp_db, feed_env):
-    # Arrange — §2 non-interactive contract: a real run without --yes
-    # must refuse (exit 2), never prompt.
-    args = ["update-db", "--db", str(temp_db), "--since", "2026-01-01"]
-    # Act
-    result = runner.invoke(cli, args)
-    # Assert
-    assert result.exit_code == 2
-
-
-def test_cli_update_db_refusal_mentions_yes_flag(runner, temp_db, feed_env):
+def test_cli_update_dry_run_exits_zero(cli_dry_run):
     # Arrange
-    args = ["update-db", "--db", str(temp_db), "--since", "2026-01-01"]
+    # Act
+    # Assert
+    assert cli_dry_run.exit_code == 0, cli_dry_run.output
+
+
+def test_cli_update_dry_run_writes_no_records(cli_dry_run):
+    # Arrange
+    # Act
+    rows = works_store().rows()
+    # Assert
+    assert rows == []
+
+
+@pytest.fixture
+def cli_real_run(runner, store_env, feed_env):
+    """Drive the CLI's real (``--yes``) path over the offline feed."""
+    return runner.invoke(
+        cli, ["update-db", "--yes", "--since", "2026-01-01"]
+    )
+
+
+def test_cli_update_yes_upserts_the_feed(cli_real_run):
+    # Arrange
+    # Act
+    rows = works_store().rows()
+    # Assert
+    assert len(rows) == 2
+
+
+def test_cli_update_yes_exits_zero(cli_real_run):
+    # Arrange
+    # Act
+    # Assert
+    assert cli_real_run.exit_code == 0, cli_real_run.output
+
+
+def test_cli_update_quiet_prints_a_one_line_summary(runner, store_env, feed_env):
+    # Arrange — assert on STDOUT, not on ``output``: click 8.5 merges
+    # stderr into ``output``, and the SciTeX logging runtime installs a
+    # root INFO handler on stderr, so ``output`` carries the engine's
+    # progress lines too. What ``--quiet`` promises a cron job is that
+    # STDOUT is the single summary line.
+    args = ["update-db", "--yes", "--quiet", "--since", "2026-01-01"]
     # Act
     result = runner.invoke(cli, args)
     # Assert
-    assert "--yes" in result.output
+    assert result.stdout.strip().startswith("2 ")
 
 
-def test_cli_deprecated_update_alias_still_works(runner, temp_db, feed_env):
+@pytest.fixture
+def cli_without_yes(runner, store_env, feed_env):
+    """Invoke the mutating command with no ``--yes``."""
+    return runner.invoke(cli, ["update-db", "--since", "2026-01-01"])
+
+
+def test_cli_update_db_refuses_without_yes(cli_without_yes):
+    # Arrange — §2 non-interactive contract: a real run without --yes must
+    # refuse (exit 2), never prompt.
+    # Act
+    # Assert
+    assert cli_without_yes.exit_code == 2
+
+
+def test_cli_update_db_refusal_mentions_the_yes_flag(cli_without_yes):
+    # Arrange
+    # Act
+    # Assert
+    assert "--yes" in cli_without_yes.output
+
+
+def test_cli_update_db_refusal_writes_nothing(cli_without_yes):
+    # Arrange
+    # Act
+    rows = works_store().rows()
+    # Assert
+    assert rows == []
+
+
+def test_cli_deprecated_update_alias_still_works(runner, store_env, feed_env):
     # Arrange — Phase-W alias: old `update` spelling forwards to
-    # `update-db` (dry-run path needs no --yes).
-    args = ["update", "--db", str(temp_db), "--dry-run", "--since", "2026-01-01"]
+    # `update-db` (the dry-run path needs no --yes).
+    args = ["update", "--dry-run", "--since", "2026-01-01"]
     # Act
     result = runner.invoke(cli, args)
     # Assert
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
 
 
 # EOF

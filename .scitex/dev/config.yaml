@@ -1,7 +1,4 @@
 # scitex-dev project-type config
-# vendor/ holds two pre-pip-install vendored projects (dois2sqlite,
-# labs-data-file-api) used as build-time references. Not imported by
-# src/, not shipped in the wheel.
 
 project-type:
   - pip
@@ -9,6 +6,15 @@ project-type:
 audit:
   root-whitelist:
     dirs:
+      # vendor/ holds two pre-pip-install vendored upstream projects: the
+      # bulk loader for the retired file-backed corpus, and a CrossRef
+      # Public Data File API client. Both were build-time references for
+      # the retired pipeline; nothing outside vendor/ imports either, and
+      # the ingest engine (crossref_local._core.ingest) deliberately does
+      # not. This entry is therefore dead weight and should be deleted in
+      # the same change that deletes vendor/ — not before, because the
+      # auditor walks the filesystem and would flag the directory the
+      # moment this line goes.
       - vendor
       # CI-side install artefacts that `pip install -e ".[all]"`
       # creates on the GitHub Actions runner and not in the wheel.

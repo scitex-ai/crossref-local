@@ -109,12 +109,14 @@ def test_health_endpoint_reports_status_healthy(client):
     assert data["status"] == "healthy"
 
 
-def test_health_endpoint_includes_database_connected_field(client):
-    # Arrange
+def test_health_endpoint_includes_store_field(client):
+    # Arrange — `database_connected` became `store`: the probe resolves a
+    # target rather than opening a connection, so what it can honestly
+    # report is WHICH store, not whether a socket is up.
     # Act
     data = client.get("/health").json()
     # Assert
-    assert "database_connected" in data
+    assert "store" in data
 
 
 # ---------- /info ----------
@@ -164,9 +166,9 @@ def test_info_endpoint_counts_source_is_honest_label(client):
     # Arrange
     # Act
     data = client.get("/info").json()
-    # Assert — cache-backed "exact" or MAX(rowid) "estimated"; never a
-    # silent COUNT(*) full scan
-    assert data["counts_source"] in {"exact", "estimated"}
+    # Assert — cache-backed "exact", or "unavailable" when no cache has
+    # been written; never a silent full-collection scan on the read path.
+    assert data["counts_source"] in {"exact", "unavailable"}
 
 
 # ---------- /works search ----------

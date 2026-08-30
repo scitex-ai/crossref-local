@@ -21,9 +21,14 @@ interfaces:
 
 > **Interfaces:** Python ⭐⭐⭐ (primary) · CLI ⭐⭐ · MCP ⭐⭐ · Skills ⭐⭐ · Hook — · HTTP —
 
-Local mirror of the CrossRef database with FTS5 full-text search across
-167M+ scholarly works — offline, millisecond queries, no rate limits. Also
-exposes citation networks, per-topic caches, and an HTTP/MCP relay.
+Local mirror of the CrossRef corpus — 167M+ scholarly works in this host's
+shared store, with DOI lookup and full-text search, offline and with no rate
+limits. Also exposes citation networks, per-topic caches, and an HTTP/MCP
+relay.
+
+DOI lookups are keyed reads and cheap. Full-text search is **not indexed**:
+it scans the works collection in Python, one pass per query. See
+[14_search.md](14_search.md) before relying on it at corpus scale.
 
 ## Installation & import
 
@@ -45,7 +50,7 @@ This package does not ship as a submodule of the `scitex` umbrella.
 ## Deep-dive
 
 - [13_configuration.md](13_configuration.md) — env vars, DB vs HTTP mode, relay server
-- [14_search.md](14_search.md) — `search()`, `count()`, `exists()`, FTS5 syntax
+- [14_search.md](14_search.md) — `search()`, `count()`, `exists()`, query syntax, scan cost
 - [15_retrieval.md](15_retrieval.md) — `get()`, `get_many()`, `enrich()`, `enrich_dois()`
 - [16_models.md](16_models.md) — `Work`, `SearchResult` dataclasses
 - [05_citations.md](05_citations.md) — `get_citing()`, `get_cited()`, `CitationNetwork`

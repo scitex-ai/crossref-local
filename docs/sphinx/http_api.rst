@@ -33,14 +33,17 @@ Health Check
 
 Returns server health status.
 
-Database Info
-~~~~~~~~~~~~~
+Store Info
+~~~~~~~~~~
 
 .. code-block:: text
 
     GET /info
 
-Returns database statistics (total works, FTS indexed count).
+Returns corpus statistics — works, searchable works, citation edges — read
+from the exact-count cache, plus a ``counts_source`` of ``"exact"`` or
+``"unavailable"``. The counts are never measured on this path; refresh the
+cache with ``crossref-local sync-stats``.
 
 Search Works
 ~~~~~~~~~~~~
@@ -51,7 +54,7 @@ Search Works
 
 Parameters:
 
-- ``q`` (required): Search query (FTS5 syntax supported)
+- ``q`` (required): Search query (see `Query Syntax`_ below)
 - ``limit`` (optional): Max results (default: 10, max: 100)
 - ``offset`` (optional): Skip first N results
 
@@ -149,16 +152,31 @@ Citation Network
 
 Returns a citation network graph.
 
-FTS5 Query Syntax
------------------
+Query Syntax
+------------
 
-The search supports FTS5 query syntax:
+The search supports:
 
-- Simple terms: ``machine learning``
+- Simple terms: ``machine learning`` (adjacent terms are joined by ``AND``)
 - Exact phrases: ``"neural network"``
-- Boolean operators: ``CRISPR AND gene editing``
+- Boolean operators: ``CRISPR AND gene editing``, ``hippocampus OR cortex``
 - Exclusion: ``machine learning NOT deep``
-- Prefix matching: ``neuro*``
+
+Terms match as case-insensitive substrings of a work's title, abstract,
+authors and container title. There is no prefix operator: ``neuro*`` is
+matched literally, and a bare ``neuro`` already matches ``neuroscience``.
+``NEAR`` is accepted but treated as ``AND`` — proximity needs positional
+information the store does not keep, so the match is widened rather than
+silently returning proximity-ordered nonsense.
+
+.. warning::
+
+   Search is **not indexed**. The store primitive has no text-search
+   surface, no filtered read and no aggregate, so matching happens in Python
+   over every record in the works collection: one full scan per query. This
+   is correct at any size and acceptable only at small ones — against the
+   full ~167M-work corpus it is not viable. A query surface on the store
+   primitive is the outstanding work.
 
 Examples:
 

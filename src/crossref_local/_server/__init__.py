@@ -1,4 +1,4 @@
-"""FastAPI server for CrossRef Local with FTS5 search.
+"""FastAPI server for CrossRef Local.
 
 Modular server structure:
 - routes_works.py: /works endpoints
@@ -73,32 +73,42 @@ def root():
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
-    from .._core.db import get_db
+    """Health check endpoint.
 
-    db = get_db()
+    Reports the store this host reads under ``store``. That value is a
+    credential-free description, never the connection string: a DSN can
+    carry a password and this response is public.
+
+    ``store_available`` only resolves the target — it opens no connection
+    — so a probe of this endpoint stays O(1) no matter how far away the
+    store is. A target that resolves but refuses the connection surfaces
+    at first real use, naming the address and the reason.
+    """
+    from .._core.config import Config, store_available
+
+    available = store_available()
     return {
-        "status": "healthy",
-        "database_connected": db is not None,
-        "database_path": str(db.db_path) if db else None,
+        "status": "healthy" if available else "degraded",
+        "store": Config.describe_store(),
     }
 
 
 @app.get("/info")
 def info():
-    """Get database statistics.
+    """Get corpus statistics.
 
-    Counts come from the ``db_stats`` cache (exact, written by
-    ``refresh_stats``) or ``MAX(rowid)`` estimates when the cache is
-    absent — never ``COUNT(*)`` full scans (~17.5 s on 167M+ rows).
-    ``counts_source`` labels which path produced the numbers.
+    Counts come from the exact-count cache written by ``refresh_stats``
+    (``crossref-local sync-stats``), or are reported as unavailable when
+    that cache is absent. This endpoint NEVER counts: the store has no
+    aggregate, so counting means reading every record, and a probe must
+    not cost that. ``counts_source`` labels which path produced the
+    numbers.
     """
-    from .._core.db import get_db
+    from .._core.config import Config
     from .._core.stats import get_counts
     from .models import InfoResponse
 
-    db = get_db()
-    counts = get_counts(db)
+    counts = get_counts()
 
     return InfoResponse(
         total_papers=counts["works"],
@@ -106,7 +116,7 @@ def info():
         citations=counts["citations"],
         counts_source=counts["counts_source"],
         counts_computed_at=counts["counts_computed_at"],
-        database_path=str(db.db_path),
+        store=Config.describe_store(),
     )
 
 

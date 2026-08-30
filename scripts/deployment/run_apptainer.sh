@@ -8,8 +8,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 IMAGE="${PROJECT_ROOT}/containers/crossref_local.sif"
-DATA_DIR="${CROSSREF_LOCAL_DATA:-/path/to/crossref_local/data}"
 OUTPUT_DIR="${PROJECT_ROOT}/output"
+
+# There is no data bind: the corpus is a store the package connects to, not a
+# directory. Apptainer passes the host environment through by default, so
+# SCITEX_STORE_DSN reaches the container without being named (or printed)
+# here — a DSN can carry a password.
 
 # Colors
 RED='\033[0;31m'
@@ -31,7 +35,6 @@ COMMANDS:
 
 OPTIONS:
     -i, --image PATH   Container image path (default: containers/crossref_local.sif)
-    -d, --data PATH    Data directory (default: \$CROSSREF_LOCAL_DATA)
     -o, --output PATH  Output directory (default: output/)
     -h, --help         Show this help message
 
@@ -71,9 +74,7 @@ run_container() {
     mkdir -p "${OUTPUT_DIR}"
 
     ${RUNNER} run \
-        --bind "${DATA_DIR}:/data:ro" \
         --bind "${OUTPUT_DIR}:/output" \
-        --env CROSSREF_LOCAL_DB=/data/crossref.db \
         "${IMAGE}" \
         "$@"
 }
@@ -82,7 +83,6 @@ run_container() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -i|--image) IMAGE="$2"; shift 2 ;;
-        -d|--data) DATA_DIR="$2"; shift 2 ;;
         -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         api|serve|search|get|count|info|shell)
@@ -100,9 +100,7 @@ elif [[ "$1" == "shell" ]]; then
     RUNNER=$(detect_runner)
     mkdir -p "${OUTPUT_DIR}"
     ${RUNNER} shell \
-        --bind "${DATA_DIR}:/data:ro" \
         --bind "${OUTPUT_DIR}:/output" \
-        --env CROSSREF_LOCAL_DB=/data/crossref.db \
         "${IMAGE}"
 else
     run_container crossref-local "$@"

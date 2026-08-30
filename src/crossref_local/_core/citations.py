@@ -18,10 +18,13 @@ Usage:
 
 from dataclasses import dataclass as _dataclass
 from dataclasses import field as _field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
-from .db import Database, get_db
 from .models import Work
+from .store import citations_store, works_store
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from scitex_dev.store import Store
 
 __all__ = [
     "get_citing",
@@ -33,78 +36,67 @@ __all__ = [
 ]
 
 
-def get_citing(doi: str, limit: int = 100, db: Optional[Database] = None) -> List[str]:
+def _edges(store: "Optional[Store]" = None):
+    """Every citation edge, as ``(citing_doi, cited_doi)`` pairs.
+
+    The store cannot filter, so both directions of the lookup below start
+    from the whole collection. This is the single most costly consequence
+    of the storage change for this module: what were two indexed lookups
+    (``idx_citations_cited``, ``idx_citations_citing``) are now full reads,
+    and the network builder issues one per node visited.
+    """
+    store = store if store is not None else citations_store()
+    for row in store.rows():
+        values = row.values
+        yield str(values.get("citing_doi")), str(values.get("cited_doi"))
+
+
+def get_citing(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> List[str]:
     """
     Get DOIs of papers that cite the given DOI.
 
     Args:
         doi: The DOI to find citations for
         limit: Maximum number of citing papers to return
-        db: Database connection (uses singleton if not provided)
+        store: Citations store (opens this host's if not provided)
 
     Returns:
         List of DOIs that cite this paper
     """
-    if db is None:
-        db = get_db()
-
-    rows = db.fetchall(
-        """
-        SELECT citing_doi
-        FROM citations
-        WHERE cited_doi = ?
-        LIMIT ?
-        """,
-        (doi, limit),
-    )
-    return [row["citing_doi"] for row in rows]
+    found = [citing for citing, cited in _edges(store) if cited == doi]
+    found.sort()
+    return found[:limit]
 
 
-def get_cited(doi: str, limit: int = 100, db: Optional[Database] = None) -> List[str]:
+def get_cited(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> List[str]:
     """
     Get DOIs of papers that the given DOI cites (references).
 
     Args:
         doi: The DOI to find references for
         limit: Maximum number of referenced papers to return
-        db: Database connection (uses singleton if not provided)
+        store: Citations store (opens this host's if not provided)
 
     Returns:
         List of DOIs that this paper cites
     """
-    if db is None:
-        db = get_db()
-
-    rows = db.fetchall(
-        """
-        SELECT cited_doi
-        FROM citations
-        WHERE citing_doi = ?
-        LIMIT ?
-        """,
-        (doi, limit),
-    )
-    return [row["cited_doi"] for row in rows]
+    found = [cited for citing, cited in _edges(store) if citing == doi]
+    found.sort()
+    return found[:limit]
 
 
-def get_citation_count(doi: str, db: Optional[Database] = None) -> int:
+def get_citation_count(doi: str, store: "Optional[Store]" = None) -> int:
     """
     Get the number of citations for a DOI.
 
     Args:
         doi: The DOI to count citations for
-        db: Database connection
+        store: Citations store
 
     Returns:
         Number of papers citing this DOI
     """
-    if db is None:
-        db = get_db()
-
-    row = db.fetchone(
-        "SELECT COUNT(*) as count FROM citations WHERE cited_doi = ?", (doi,)
-    )
-    return row["count"] if row else 0
+    return sum(1 for _citing, cited in _edges(store) if cited == doi)
 
 
 @_dataclass
@@ -158,7 +150,7 @@ class CitationNetwork:
         depth: int = 1,
         max_citing: int = 50,
         max_cited: int = 50,
-        db: Optional[Database] = None,
+        store: "Optional[Store]" = None,
     ):
         """
         Build a citation network around a central paper.
@@ -168,13 +160,14 @@ class CitationNetwork:
             depth: How many levels of citations to include (1 = direct only)
             max_citing: Max papers citing each node to include
             max_cited: Max papers each node cites to include
-            db: Database connection
+            store: Citations store (opens this host's if not provided)
         """
         self.center_doi = center_doi
         self.depth = depth
         self.max_citing = max_citing
         self.max_cited = max_cited
-        self.db = db or get_db()
+        self.store = store if store is not None else citations_store()
+        self.works = works_store()
 
         self.nodes: Dict[str, CitationNode] = {}
         self.edges: List[CitationEdge] = []
@@ -182,7 +175,24 @@ class CitationNetwork:
         self._build_network()
 
     def _build_network(self):
-        """Build the citation network by traversing citations."""
+        """Build the citation network by traversing citations.
+
+        The edge list is read ONCE and indexed in memory, rather than asked
+        for per node. The store cannot filter, so a per-node lookup would
+        re-read the whole collection for every node visited — quadratic in
+        the traversal, on the largest collection this package has.
+        """
+        by_cited: Dict[str, List[str]] = {}
+        by_citing: Dict[str, List[str]] = {}
+        for citing, cited in _edges(self.store):
+            by_cited.setdefault(cited, []).append(citing)
+            by_citing.setdefault(citing, []).append(cited)
+        for bucket in (by_cited, by_citing):
+            for dois in bucket.values():
+                dois.sort()
+        self._by_cited = by_cited
+        self._by_citing = by_citing
+
         # Start with center node
         to_process: List[Tuple[str, int]] = [(self.center_doi, 0)]
         processed: Set[str] = set()
@@ -202,27 +212,27 @@ class CitationNetwork:
                 continue
 
             # Get citing papers (papers that cite this one)
-            citing = get_citing(doi, limit=self.max_citing, db=self.db)
+            citing = by_cited.get(doi, [])[: self.max_citing]
             for citing_doi in citing:
                 self.edges.append(CitationEdge(citing_doi=citing_doi, cited_doi=doi))
                 if citing_doi not in processed:
                     to_process.append((citing_doi, current_depth + 1))
 
             # Get cited papers (papers this one cites)
-            cited = get_cited(doi, limit=self.max_cited, db=self.db)
+            cited = by_citing.get(doi, [])[: self.max_cited]
             for cited_doi in cited:
                 self.edges.append(CitationEdge(citing_doi=doi, cited_doi=cited_doi))
                 if cited_doi not in processed:
                     to_process.append((cited_doi, current_depth + 1))
 
     def _add_node(self, doi: str, depth: int):
-        """Add a node with metadata from the database."""
+        """Add a node with metadata from the store."""
         if doi in self.nodes:
             return
 
-        # Get metadata
-        metadata = self.db.get_metadata(doi)
-        citation_count = get_citation_count(doi, db=self.db)
+        row = self.works.get({"doi": doi})
+        metadata = row.values.get("metadata") if row is not None else None
+        citation_count = len(self._by_cited.get(doi, ()))
 
         if metadata:
             work = Work.from_metadata(doi, metadata)

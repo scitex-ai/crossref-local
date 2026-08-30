@@ -3,7 +3,7 @@
 CrossRef Local - Local CrossRef Database
 ========================================
 
-**CrossRef Local** provides fast, offline access to the CrossRef database with 167M+ scholarly works and full-text search via FTS5.
+**CrossRef Local** provides offline access to the CrossRef corpus — 167M+ scholarly works, DOI lookup, full-text search and citation networks — over the fleet's shared store.
 
 .. toctree::
    :maxdepth: 2
@@ -28,11 +28,12 @@ CrossRef Local - Local CrossRef Database
 Key Features
 ------------
 
-- **167M+ Works**: Complete CrossRef database locally
-- **Full-Text Search**: FTS5-powered search across titles, abstracts, and authors
+- **167M+ Works**: The complete CrossRef corpus in this host's shared store
+- **Full-Text Search**: Search across titles, abstracts, and authors (scans
+  the works collection — see :doc:`http_api` for the cost)
 - **Citation Networks**: Explore citation relationships and build networks
 - **Impact Factors**: Pre-computed journal impact factors from OpenAlex
-- **HTTP Relay**: Access remote database via HTTP API
+- **HTTP Relay**: Access a remote host's store via HTTP API
 - **MCP Integration**: AI agents can search via MCP server
 - **Python API**: Simple programmatic access
 

@@ -1,13 +1,14 @@
 """Work search and retrieval endpoints."""
 
 import time
-from typing import Optional, Dict
+from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
 
 from .._core import fts
-from .._core.db import get_db
 from .._core.models import Work
+from .._core.store import works_store
+from .._impact_factor import impact_factor_for_issn
 from .models import (
     BatchRequest,
     BatchResponse,
@@ -17,30 +18,32 @@ from .models import (
 
 router = APIRouter(tags=["works"])
 
-# IF cache for performance
-_if_cache: Dict[str, Optional[float]] = {}
 
+def _metadata_of(row) -> Optional[dict]:
+    """The parsed ``metadata`` of a work row, or None for a miss.
 
-def _get_impact_factor(db, issn: str) -> Optional[float]:
-    """Get impact factor from journals_openalex table."""
-    if not issn:
+    ``metadata`` is a declared JSON field, so the primitive hands back a
+    ``dict``; nothing is decompressed or re-parsed here.
+    """
+    if row is None:
         return None
-    if issn in _if_cache:
-        return _if_cache[issn]
-    try:
-        row = db.fetchone(
-            "SELECT two_year_mean_citedness FROM journals_openalex WHERE issns LIKE ?",
-            (f"%{issn}%",),
-        )
-        _if_cache[issn] = row["two_year_mean_citedness"] if row else None
-    except Exception:
-        _if_cache[issn] = None
-    return _if_cache[issn]
+    return row.values.get("metadata") or None
+
+
+def _get_impact_factor(issn: str) -> Optional[float]:
+    """The journal's OpenAlex IF proxy for one ISSN.
+
+    The per-ISSN cache this module used to keep lives in
+    :mod:`crossref_local._impact_factor.journal_lookup` now, as a single
+    ISSN -> proxy index: the store has no filtered read, so one lookup per
+    ISSN would be one full scan per ISSN.
+    """
+    return impact_factor_for_issn(issn)
 
 
 @router.get("/works", response_model=SearchResponse)
 def search_works(
-    q: str = Query(..., description="Search query (FTS5 syntax supported)"),
+    q: str = Query(..., description='Search query (AND / OR / NOT / "phrases")'),
     limit: int = Query(10, ge=1, description="Max results"),
     offset: int = Query(0, ge=0, description="Skip first N results"),
     with_if: bool = Query(False, description="Include impact factor (OpenAlex)"),
@@ -48,8 +51,8 @@ def search_works(
     """
     Full-text search across works.
 
-    Uses FTS5 index for fast searching across titles, abstracts, and authors.
-    Supports FTS5 query syntax like AND, OR, NOT, "exact phrases".
+    Searches titles, abstracts, authors and container titles. Supports
+    AND, OR, NOT and "exact phrases".
 
     Examples:
         /works?q=machine learning
@@ -63,12 +66,9 @@ def search_works(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Search error: {e}")
 
-    # Get IF if requested
-    db = get_db() if with_if else None
-
     work_responses = []
     for w in results.works:
-        if_val = _get_impact_factor(db, w.issn) if db and w.issn else None
+        if_val = _get_impact_factor(w.issn) if with_if and w.issn else None
         work_responses.append(
             WorkResponse(
                 doi=w.doi,
@@ -122,8 +122,7 @@ def get_work(doi: str):
         /works/10.1038/nature12373
         /works/10.1016/j.cell.2020.01.001
     """
-    db = get_db()
-    metadata = db.get_metadata(doi)
+    metadata = _metadata_of(works_store().get({"doi": doi}))
 
     if metadata is None:
         raise HTTPException(status_code=404, detail=f"DOI not found: {doi}")
@@ -152,11 +151,11 @@ def get_works_batch(request: BatchRequest):
 
     Request body: {"dois": ["10.1038/...", "10.1016/..."]}
     """
-    db = get_db()
+    store = works_store()
     results = []
 
     for doi in request.dois:
-        metadata = db.get_metadata(doi)
+        metadata = _metadata_of(store.get({"doi": doi}))
         if metadata:
             work = Work.from_metadata(doi, metadata)
             results.append(

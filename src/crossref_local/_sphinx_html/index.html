@@ -50,8 +50,8 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -97,7 +97,7 @@
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -110,7 +110,7 @@
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -123,12 +123,14 @@
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="api/crossref_local.html#data-classes">Data Classes</a><ul>
@@ -166,7 +168,7 @@
              
   <section id="crossref-local-local-crossref-database">
 <h1>CrossRef Local - Local CrossRef Database<a class="headerlink" href="#crossref-local-local-crossref-database" title="Link to this heading"></a></h1>
-<p><strong>CrossRef Local</strong> provides fast, offline access to the CrossRef database with 167M+ scholarly works and full-text search via FTS5.</p>
+<p><strong>CrossRef Local</strong> provides offline access to the CrossRef corpus — 167M+ scholarly works, DOI lookup, full-text search and citation networks — over the fleet’s shared store.</p>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
@@ -174,8 +176,8 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -200,7 +202,7 @@
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#starting-the-server">Starting the Server</a></li>
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#endpoints">Endpoints</a></li>
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#citations">Citations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -218,11 +220,12 @@
 <section id="key-features">
 <h2>Key Features<a class="headerlink" href="#key-features" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><strong>167M+ Works</strong>: Complete CrossRef database locally</p></li>
-<li><p><strong>Full-Text Search</strong>: FTS5-powered search across titles, abstracts, and authors</p></li>
+<li><p><strong>167M+ Works</strong>: The complete CrossRef corpus in this host’s shared store</p></li>
+<li><p><strong>Full-Text Search</strong>: Search across titles, abstracts, and authors (scans
+the works collection — see <a class="reference internal" href="http_api.html"><span class="doc">HTTP API Reference</span></a> for the cost)</p></li>
 <li><p><strong>Citation Networks</strong>: Explore citation relationships and build networks</p></li>
 <li><p><strong>Impact Factors</strong>: Pre-computed journal impact factors from OpenAlex</p></li>
-<li><p><strong>HTTP Relay</strong>: Access remote database via HTTP API</p></li>
+<li><p><strong>HTTP Relay</strong>: Access a remote host’s store via HTTP API</p></li>
 <li><p><strong>MCP Integration</strong>: AI agents can search via MCP server</p></li>
 <li><p><strong>Python API</strong>: Simple programmatic access</p></li>
 </ul>
@@ -233,21 +236,21 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">search</span><span class="p">,</span> <span class="n">get</span>
 
 <span class="c1"># Full-text search</span>
-<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"machine learning"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 <span class="k">for</span> <span class="n">work</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
 
 <span class="c1"># Get by DOI</span>
-<span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">&quot;10.1038/nature12373&quot;</span><span class="p">)</span>
+<span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">"10.1038/nature12373"</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">work</span><span class="o">.</span><span class="n">citation</span><span class="p">())</span>
 </pre></div>
 </div>
 <p>CLI:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Search for papers</span>
-crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;neural networks&quot;</span><span class="w"> </span>-n<span class="w"> </span><span class="m">20</span>
+crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">"neural networks"</span><span class="w"> </span>-n<span class="w"> </span><span class="m">20</span>
 
 <span class="c1"># Search with impact factors</span>
-crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;CRISPR&quot;</span><span class="w"> </span>--impact-factor
+crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">"CRISPR"</span><span class="w"> </span>--impact-factor
 
 <span class="c1"># Get by DOI</span>
 crossref-local<span class="w"> </span>search-by-doi<span class="w"> </span><span class="m">10</span>.1038/nature12373

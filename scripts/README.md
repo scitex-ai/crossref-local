@@ -1,65 +1,47 @@
 # Scripts Directory
 
-Helper scripts for CrossRef Local database management and deployment.
+Helper scripts for CrossRef Local operations and deployment.
 
 ## Directory Structure
 
 ```
 scripts/
-├── database/         # Database maintenance scripts
-│   ├── 00_rebuild_all.sh
-│   ├── 02_create_missing_indexes.sh
-│   ├── 99_db_info.sh
-│   ├── 99_maintain_indexes.sh
-│   └── 99_switch_to_optimized.sh
-└── deployment/       # Container deployment
+├── status.sh         # Overall system status (store, MCP server)
+├── database/         # Retired build pipeline — see database/README.md
+└── deployment/       # Container deployment + MCP server service
     ├── install_apptainer.sh
     ├── build_apptainer.sh
     ├── run_apptainer.sh
-    └── run_docker.sh
+    ├── run_docker.sh
+    └── mcp/          # systemd / Docker packaging for the MCP server
 ```
 
-## Database Scripts
+## Corpus Management
 
-### `database/00_rebuild_all.sh`
-
-Full database rebuild from Crossref Public Data File.
+There are no corpus build scripts any more. The corpus lives in the fleet's
+shared store primitive, so ingest and bookkeeping are package commands rather
+than a directory of shell steps:
 
 ```bash
-./scripts/database/00_rebuild_all.sh --help
-./scripts/database/00_rebuild_all.sh all       # Full rebuild (~10-14 days)
-./scripts/database/00_rebuild_all.sh fts       # Rebuild FTS index only
+crossref-local update-db            # incremental ingest from the CrossRef REST API
+crossref-local update-db --dry-run  # count what would be upserted, write nothing
+crossref-local sync-stats           # recompute the exact-count cache
+crossref-local status               # store resolution + cached counts
 ```
 
-### `database/02_create_missing_indexes.sh`
+See [`database/README.md`](database/README.md) for what each retired script
+used to do and what replaced it.
 
-Create missing indexes on citations table.
+## Status
 
-```bash
-./scripts/database/02_create_missing_indexes.sh --help
-./scripts/database/02_create_missing_indexes.sh           # Default database
-./scripts/database/02_create_missing_indexes.sh --dry-run # Preview changes
-```
+### `status.sh`
 
-### `database/99_db_info.sh`
-
-Display database schema, tables, indices, and row counts.
+Overall system status: whether the store resolves, and the MCP server's state.
 
 ```bash
-./scripts/database/99_db_info.sh --help
-./scripts/database/99_db_info.sh           # Quick summary
-./scripts/database/99_db_info.sh --full    # Full schema dump
-./scripts/database/99_db_info.sh --tables  # Tables and counts only
-```
-
-### `database/99_maintain_indexes.sh`
-
-Check and create missing database indexes.
-
-```bash
-./scripts/database/99_maintain_indexes.sh --help
-./scripts/database/99_maintain_indexes.sh              # Check/create indexes
-./scripts/database/99_maintain_indexes.sh --check-only # Only check, don't modify
+./scripts/status.sh           # Full status report
+./scripts/status.sh --quiet   # Exit 0 if healthy, 1 if issues
+./scripts/status.sh --json    # JSON output for scripting
 ```
 
 ## Deployment Scripts
@@ -106,27 +88,19 @@ Run crossref-local with Docker container.
 ./scripts/deployment/run_docker.sh shell        # Interactive shell
 ```
 
+### `deployment/mcp/`
+
+Systemd unit, Dockerfile and helper scripts for the MCP server. Driven from
+the repo root with `make mcp-install`, `make mcp-status`, `make mcp-logs`.
+
 ## Quick Reference
 
 **First-time setup:**
 ```bash
-# 1. Check/create indexes (do once, takes hours)
-./scripts/database/99_maintain_indexes.sh
-
-# 2. Check database info
-./scripts/database/99_db_info.sh
-
-# 3. Run tests
+make install          # install the package
+make status           # check the store resolves
+crossref-local update-db   # pull recent works into the store
 make test
-```
-
-**Long-running operations:**
-```bash
-# Use screen for operations that take hours/days
-screen -S rebuild
-./scripts/database/00_rebuild_all.sh fts
-# Ctrl-A D to detach
-screen -r rebuild  # Reattach
 ```
 
 <!-- EOF -->

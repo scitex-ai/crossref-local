@@ -1,28 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Impact Factor Calculator from CrossRef Local Database
+Impact Factor Calculator over the local CrossRef corpus.
 
-Calculates journal impact factors by analyzing citation patterns
-in the local CrossRef database.
+HOW THE QUERIES CHANGED, AND WHY THE FILTERS DID NOT
+----------------------------------------------------
+Every selection here used to be a JSON path evaluated inside the engine —
+``$.ISSN[0]``, ``$.published.date-parts[0][0]``, ``$.type``, and the length
+of ``$.reference``. Those four values are now denormalised onto the work
+record as ``issn`` / ``year`` / ``work_type`` / ``reference_count`` by the
+ingest path, so the *predicates* are unchanged; only where they are
+evaluated moved, from the engine to this process.
+
+The store primitive offers no filtered read, no aggregate and no ``IN``,
+so a scan here reads the whole collection. Every method below that is not
+a point read on a DOI is O(collection). That is a real regression in cost
+against the previous file-backed engine and it is not hidden behind a
+"fast"/"slow" label: see ``docs/adr/0001-corpus-moves-to-the-shared-store.md``.
 """
 
-import json
-import sqlite3
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-from collections import defaultdict
 import logging
+from typing import Dict, List, Optional
 
+from .._core.store import citations_store, works_store
 from .journal_lookup import JournalLookup
-from ..config import Config
 
 logger = logging.getLogger(__name__)
+
+#: JCR counts research articles; the corpus also holds news, editorials,
+#: letters and corrections. The reference-list length is the same proxy the
+#: previous implementation used, kept so the numbers stay comparable.
+CITABLE_MIN_REFERENCES = 20
+
+_JOURNAL_ARTICLE = "journal-article"
+
+
+def _as_int(value) -> Optional[int]:
+    """An integer field as an int, or None when it is absent/unusable."""
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
 
 
 class ImpactFactorCalculator:
     """
-    Calculate journal impact factors from local CrossRef database.
+    Calculate journal impact factors from the local CrossRef corpus.
 
     Supports:
     - 2-year and 5-year impact factors
@@ -31,43 +53,37 @@ class ImpactFactorCalculator:
     - Journal identification by name or ISSN
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, store=None, *, citations=None, journals=None):
         """
-        Initialize calculator with database connection.
+        Initialize the calculator.
+
+        Thread-safe by construction when no store is passed: the openers in
+        :mod:`crossref_local._core.store` hand out one store per thread, so
+        two threads never share a connection.
 
         Args:
-            db_path: Path to CrossRef SQLite database. Auto-detects if None.
+            store: The works collection (opens this thread's if not given).
+            citations: The citation-edge collection (likewise).
+            journals: The journal collection, used for name->ISSN
+                resolution (likewise).
         """
-        if db_path is None:
-            self.db_path = Config.get_db_path()
-        else:
-            self.db_path = Path(db_path)
-            if not self.db_path.exists():
-                raise FileNotFoundError(f"Database not found: {db_path}")
+        self._store = store
+        self._citations = citations
+        self._journal_lookup = JournalLookup(journals, works=store)
 
-        self._journal_lookup = JournalLookup(str(self.db_path))
+    def _works(self):
+        return self._store if self._store is not None else works_store()
 
-    def _get_connection(self):
-        """Create a new database connection (context manager).
-
-        Creates a fresh connection for each query to ensure thread safety.
-        SQLite connections cannot be shared across threads.
-        """
-        from contextlib import contextmanager
-
-        @contextmanager
-        def connection():
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            try:
-                yield conn
-            finally:
-                conn.close()
-
-        return connection()
+    def _citation_edges(self):
+        return self._citations if self._citations is not None else citations_store()
 
     def close(self):
-        """Close resources (no-op, connections are per-query now)."""
+        """Release nothing.
+
+        The stores are owned by the thread, not by this object; see
+        :meth:`JournalLookup.close`. Use
+        :func:`crossref_local._core.store.close_stores` to release them.
+        """
         if self._journal_lookup:
             self._journal_lookup.close()
 
@@ -81,8 +97,8 @@ class ImpactFactorCalculator:
         """
         Get ISSN for a journal name.
 
-        Uses the journals lookup table for fast resolution.
-        Falls back to slow query if table doesn't exist.
+        Resolves through the journal collection, which falls back to a
+        works scan when that collection has never been populated.
 
         Args:
             journal_name: Journal name (e.g., "Nature")
@@ -91,6 +107,21 @@ class ImpactFactorCalculator:
             ISSN string or None
         """
         return self._journal_lookup.get_issn(journal_name)
+
+    def _matches_journal(
+        self, values, journal_identifier: str, use_issn: bool
+    ) -> bool:
+        """Whether one work belongs to the journal being measured.
+
+        By ISSN the test is equality, as the previous ``=`` was. By name it
+        is a case-insensitive substring, as the previous ``LIKE '%name%'``
+        was — a journal name given by a caller is rarely the exact
+        container title CrossRef deposited.
+        """
+        if use_issn:
+            return values.get("issn") == journal_identifier
+        container = values.get("container_title") or ""
+        return journal_identifier.lower() in container.lower()
 
     def get_article_dois(
         self,
@@ -102,46 +133,33 @@ class ImpactFactorCalculator:
         """
         Get DOIs for articles in a journal for a specific year.
 
-        Optimized: only fetches DOIs, not full metadata.
-
         Args:
             journal_identifier: Journal name or ISSN
             year: Publication year
             use_issn: If True, search by ISSN instead of name
-            citable_only: If True, only return citable items (>20 references)
-                         This matches JCR's definition of citable items.
+            citable_only: If True, only return citable items (>20
+                references). This matches JCR's definition of citable items.
 
         Returns:
             List of DOI strings
         """
-        # Citable items filter: research articles typically have >20 references
-        # This excludes news, editorials, letters, corrections, etc.
-        citable_filter = "AND json_array_length(json_extract(metadata, '$.reference')) > 20" if citable_only else ""
-
-        if use_issn:
-            query = f"""
-            SELECT doi
-            FROM works
-            WHERE json_extract(metadata, '$.ISSN[0]') = ?
-            AND json_extract(metadata, '$.published.date-parts[0][0]') = ?
-            AND type = 'journal-article'
-            {citable_filter}
-            """
-            params = (journal_identifier, year)
-        else:
-            query = f"""
-            SELECT doi
-            FROM works
-            WHERE json_extract(metadata, '$.container-title[0]') LIKE ?
-            AND json_extract(metadata, '$.published.date-parts[0][0]') = ?
-            AND type = 'journal-article'
-            {citable_filter}
-            """
-            params = (f"%{journal_identifier}%", year)
-
-        with self._get_connection() as conn:
-            cursor = conn.execute(query, params)
-            return [row[0] for row in cursor]
+        dois: List[str] = []
+        for row in self._works().rows():
+            values = row.values
+            if values.get("work_type") != _JOURNAL_ARTICLE:
+                continue
+            if _as_int(values.get("year")) != year:
+                continue
+            if not self._matches_journal(values, journal_identifier, use_issn):
+                continue
+            if citable_only:
+                references = _as_int(values.get("reference_count")) or 0
+                if references <= CITABLE_MIN_REFERENCES:
+                    continue
+            doi = values.get("doi")
+            if doi:
+                dois.append(str(doi))
+        return dois
 
     def count_articles(
         self,
@@ -160,29 +178,11 @@ class ImpactFactorCalculator:
         Returns:
             Number of articles
         """
-        if use_issn:
-            query = """
-            SELECT COUNT(*) as count
-            FROM works
-            WHERE json_extract(metadata, '$.ISSN[0]') = ?
-            AND json_extract(metadata, '$.published.date-parts[0][0]') = ?
-            AND type = 'journal-article'
-            """
-            params = (journal_identifier, year)
-        else:
-            query = """
-            SELECT COUNT(*) as count
-            FROM works
-            WHERE json_extract(metadata, '$.container-title[0]') LIKE ?
-            AND json_extract(metadata, '$.published.date-parts[0][0]') = ?
-            AND type = 'journal-article'
-            """
-            params = (f"%{journal_identifier}%", year)
-
-        with self._get_connection() as conn:
-            cursor = conn.execute(query, params)
-            result = cursor.fetchone()
-            return result[0] if result else 0
+        return len(
+            self.get_article_dois(
+                journal_identifier, year, use_issn, citable_only=False
+            )
+        )
 
     def get_citations_to_articles(
         self,
@@ -196,47 +196,52 @@ class ImpactFactorCalculator:
         Args:
             dois: List of DOIs to check citations for
             citation_year: Year when citations occurred
-            method: "citations-table" (fast, year-specific),
-                    "is-referenced-by" (fast, cumulative),
-                    "reference-graph" (slow, accurate)
+            method: "citations-table" (year-specific),
+                    "is-referenced-by" (cumulative, point reads),
+                    "reference-graph" (slowest, accurate)
 
         Returns:
             Total citation count
         """
         if method == "citations-table":
-            return self._count_citations_from_table(dois, citation_year)
+            return self._count_citations_from_edges(dois, citation_year)
         elif method == "is-referenced-by":
             return self._count_citations_simple(dois, citation_year)
         else:
             return self._count_citations_from_graph(dois, citation_year)
 
-    def _count_citations_from_table(self, dois: List[str], citation_year: int) -> int:
+    def _count_citations_from_edges(
+        self, dois: List[str], citation_year: int
+    ) -> int:
         """
-        Fast citation count using citations table with indexed lookup.
+        Count citations from the citation-edge collection.
 
-        Uses idx_citations_cited_new (cited_doi, citing_year) index.
+        Reads every edge: the store cannot answer ``cited_doi IN (...) AND
+        citing_year = ?`` for us, so the membership test happens here
+        against a set.
         """
         if not dois:
             return 0
 
-        # Batch query for efficiency
-        placeholders = ','.join('?' * len(dois))
-        query = f"""
-        SELECT COUNT(*) as total
-        FROM citations
-        WHERE cited_doi IN ({placeholders})
-        AND citing_year = ?
-        """
+        targets = set(dois)
+        total = 0
+        for row in self._citation_edges().rows():
+            values = row.values
+            if values.get("cited_doi") in targets and (
+                _as_int(values.get("citing_year")) == citation_year
+            ):
+                total += 1
+        return total
 
-        params = dois + [citation_year]
-        with self._get_connection() as conn:
-            cursor = conn.execute(query, params)
-            result = cursor.fetchone()
-            return result[0] if result and result[0] else 0
+    #: The name callers already know, kept as an alias.
+    _count_citations_from_table = _count_citations_from_edges
 
     def _count_citations_simple(self, dois: List[str], citation_year: int) -> int:
         """
-        Use is-referenced-by-count field (current citations only).
+        Sum the ``referenced_by_count`` of each work (current citations).
+
+        Point reads, one per DOI — the cheapest of the three methods and
+        the only one that does not scan.
 
         Note: This gives current total citations, not year-specific.
         For accurate year-by-year IF, use reference-graph method.
@@ -244,61 +249,62 @@ class ImpactFactorCalculator:
         if not dois:
             return 0
 
-        # Create placeholders for DOIs
-        placeholders = ','.join('?' * len(dois))
-        query = f"""
-        SELECT SUM(CAST(json_extract(metadata, '$.is-referenced-by-count') AS INTEGER)) as total
-        FROM works
-        WHERE doi IN ({placeholders})
-        """
-
-        with self._get_connection() as conn:
-            cursor = conn.execute(query, dois)
-            result = cursor.fetchone()
-            return result[0] if result and result[0] else 0
+        works = self._works()
+        total = 0
+        for doi in dois:
+            row = works.get({"doi": doi})
+            if row is None:
+                continue
+            total += _as_int(row.values.get("referenced_by_count")) or 0
+        return total
 
     def _count_citations_from_graph(self, dois: List[str], citation_year: int) -> int:
         """
-        Count citations by building citation graph from reference fields.
+        Count citations by reading the reference list of every work
+        published in ``citation_year``.
 
-        This is more accurate as it respects citation year.
+        More accurate than the cumulative count because it respects the
+        citation year, and the most expensive: it reads every work.
         """
         if not dois:
             return 0
 
-        # Create a set for fast lookup
         target_dois = set(doi.lower() for doi in dois)
         citation_count = 0
 
-        # Query articles published in citation_year
-        logger.info(f"  Querying articles with references published in {citation_year}...")
-        query = """
-        SELECT metadata
-        FROM works
-        WHERE json_extract(metadata, '$.published.date-parts[0][0]') = ?
-        AND json_extract(metadata, '$.reference') IS NOT NULL
-        """
+        logger.info(
+            "  Reading articles with references published in %s...", citation_year
+        )
 
-        with self._get_connection() as conn:
-            cursor = conn.execute(query, (citation_year,))
+        articles_checked = 0
+        for row in self._works().rows():
+            values = row.values
+            if _as_int(values.get("year")) != citation_year:
+                continue
 
-            articles_checked = 0
-            for row in cursor:
-                articles_checked += 1
-                if articles_checked % 1000 == 0:
-                    logger.info(f"  Checked {articles_checked} articles, found {citation_count} citations so far...")
+            # ``metadata`` is a declared JSON field: the primitive returns
+            # a dict. Nothing is parsed here.
+            metadata = values.get("metadata") or {}
+            references = metadata.get("reference")
+            if not references:
+                continue
 
-                metadata = json.loads(row['metadata'])
-                references = metadata.get('reference', [])
+            articles_checked += 1
+            if articles_checked % 1000 == 0:
+                logger.info(
+                    "  Checked %s articles, found %s citations so far...",
+                    articles_checked,
+                    citation_count,
+                )
 
-                # Check if any reference DOI matches our target DOIs
-                for ref in references:
-                    ref_doi = ref.get('DOI', '').lower()
-                    if ref_doi in target_dois:
-                        citation_count += 1
+            for ref in references:
+                if not isinstance(ref, dict):
+                    continue
+                if (ref.get("DOI") or "").lower() in target_dois:
+                    citation_count += 1
 
-            logger.info(f"  Checked {articles_checked} total articles with references")
-            return citation_count
+        logger.info("  Checked %s total articles with references", articles_checked)
+        return citation_count
 
     def calculate_impact_factor(
         self,
@@ -317,25 +323,28 @@ class ImpactFactorCalculator:
             target_year: Year for which to calculate IF
             window_years: Citation window (2 for 2-year IF, 5 for 5-year IF)
             use_issn: Use ISSN for journal identification
-            method: "citations-table" (fast), "is-referenced-by", or "reference-graph"
-            citable_only: If True, only count citable items (research articles with >20 refs)
-                         This matches JCR methodology. Default True.
+            method: "citations-table", "is-referenced-by", or
+                "reference-graph"
+            citable_only: If True, only count citable items (research
+                articles with >20 refs). This matches JCR methodology.
 
         Returns:
             Dictionary with calculation results
         """
         logger.info(f"Calculating {window_years}-year IF for {journal_identifier} in {target_year}")
 
-        # If journal name provided, convert to ISSN for faster queries
+        # If a journal name was given, convert it to an ISSN: the ISSN test
+        # is equality against a denormalised field, the name test is a
+        # substring over the container title.
         if not use_issn:
             logger.info(f"Looking up ISSN for journal: {journal_identifier}")
             issn = self.get_journal_issn(journal_identifier)
             if issn:
-                logger.info(f"Found ISSN: {issn} - using for faster queries")
+                logger.info(f"Found ISSN: {issn} - using for exact matching")
                 journal_identifier = issn
                 use_issn = True
             else:
-                logger.warning(f"Could not find ISSN for {journal_identifier}, using journal name (slower)")
+                logger.warning(f"Could not find ISSN for {journal_identifier}, using journal name")
 
         # Get articles published in the window years
         window_start = target_year - window_years
@@ -474,7 +483,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     with ImpactFactorCalculator() as calc:
-        # Test: Calculate IF for Nature in 2023
         result = calc.calculate_impact_factor(
             journal_identifier="Nature",
             target_year=2023,

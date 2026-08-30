@@ -46,10 +46,11 @@
 #+begin_src json
 {
   "mode": "db",
-  "db_path": "/home/ywatanabe/proj/crossref-local/data/crossref.db",
+  "status": "ok",
   "works": 167008748,
   "fts_indexed": 167008748,
-  "citations": 1788599072
+  "citations": 1788599072,
+  "counts_source": "exact"
 }
 #+end_src
 

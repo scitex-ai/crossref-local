@@ -13,17 +13,22 @@ spec-built (CliHelp, audit §4b) with a free-form fallback for scitex-dev
 versions without the helper. The interactive ``click.confirm`` gate was
 replaced by refuse-without-``--yes`` (audit §2: non-interactive CLI
 contract).
+
+The ``--db`` option is gone with the file it named: the corpus lives in
+the fleet's shared store, whose target is resolved by scitex-dev. The
+``--yes`` / ``--dry-run`` / ``--quiet`` contract is unchanged, including
+the refusal (exit 2) on a mutating run without ``--yes``.
 """
 
 import sys
 
 import click
 
-_HELP_SUMMARY = "Incrementally update the local database from the CrossRef API."
+_HELP_SUMMARY = "Incrementally update the local corpus from the CrossRef API."
 _HELP_DESCRIPTION = (
     "Fetches works newer than the recorded last sync date from the "
-    "CrossRef REST API (deep-paged) and upserts them into the database, "
-    "then refreshes the db_stats exact-count cache.",
+    "CrossRef REST API (deep-paged) and upserts them into the store, "
+    "then refreshes the crossref_corpus_stats exact-count cache.",
     "Non-interactive: a real (non --dry-run) run requires --yes/-y and "
     "refuses otherwise (exit 2).",
 )
@@ -55,13 +60,6 @@ except ImportError:  # pragma: no cover — old scitex-dev without help_spec
 
 @click.command("update-db", **_COMMAND_KWARGS)
 @click.option(
-    "--db",
-    "db_path",
-    type=click.Path(),
-    default=None,
-    help="Database path override (else use auto-discovery).",
-)
-@click.option(
     "--since",
     default=None,
     help="Override start date (YYYY-MM-DD). Default: last recorded sync.",
@@ -69,7 +67,7 @@ except ImportError:  # pragma: no cover — old scitex-dev without help_spec
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Preview only — no API writes or database changes.",
+    help="Preview only — no API writes or store changes.",
 )
 @click.option(
     "-y",
@@ -82,14 +80,13 @@ except ImportError:  # pragma: no cover — old scitex-dev without help_spec
     is_flag=True,
     help="Minimal stdout (for cron).",
 )
-def update_db_cmd(db_path, since, dry_run, yes, quiet):
-    """Incrementally update the local database from the CrossRef API."""
+def update_db_cmd(since, dry_run, yes, quiet):
+    """Incrementally update the local corpus from the CrossRef API."""
     from .. import update as _update
 
     if not dry_run and not yes:
-        target = db_path or "the auto-discovered database"
         click.secho(
-            f"Refusing to update {target} without --yes/-y "
+            "Refusing to update the local store without --yes/-y "
             "(non-interactive CLI contract, audit §2). "
             "Re-run with -y/--yes, or preview with --dry-run.",
             fg="red",
@@ -98,7 +95,7 @@ def update_db_cmd(db_path, since, dry_run, yes, quiet):
         sys.exit(2)
 
     try:
-        stats = _update(db_path=db_path, since=since, dry_run=dry_run)
+        stats = _update(since=since, dry_run=dry_run)
     except Exception as e:
         click.secho(f"Error: {e}", fg="red", err=True)
         sys.exit(1)

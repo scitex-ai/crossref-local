@@ -48,8 +48,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -95,7 +95,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -108,7 +108,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -121,12 +121,14 @@
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#data-classes">Data Classes</a><ul>
@@ -163,47 +165,65 @@
            <div itemprop="articleBody">
              
   <h1>Source code for crossref_local._core.api</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Main API for crossref_local.</span>
+<span></span><span class="sd">"""Main API for crossref_local.</span>
 
 <span class="sd">Supports two modes:</span>
-<span class="sd">- db: Direct database access (requires database file)</span>
+<span class="sd">- db: Direct access to this host's shared store</span>
 <span class="sd">- http: HTTP API access (requires API server)</span>
 
 <span class="sd">Mode is auto-detected or can be set explicitly via:</span>
-<span class="sd">- CROSSREF_LOCAL_MODE environment variable (&quot;db&quot; or &quot;http&quot;)</span>
+<span class="sd">- CROSSREF_LOCAL_MODE environment variable ("db" or "http")</span>
 <span class="sd">- CROSSREF_LOCAL_API_URL environment variable (API URL)</span>
-<span class="sd">- configure() or configure_http() functions</span>
-<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">- configure_http() function</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">fts</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">fts</span><span class="p">,</span> <span class="n">stats</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.db</span><span class="w"> </span><span class="kn">import</span> <span class="n">close_db</span><span class="p">,</span> <span class="n">get_db</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">SearchResult</span><span class="p">,</span> <span class="n">Work</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">refresh_stats</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.store</span><span class="w"> </span><span class="kn">import</span> <span class="n">close_stores</span><span class="p">,</span> <span class="n">works_store</span>
 
 <span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;search&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;count&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;get&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;get_many&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;exists&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;configure&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;configure_http&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;configure_remote&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;enrich&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;enrich_dois&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;get_mode&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;info&quot;</span><span class="p">,</span>
+    <span class="s2">"search"</span><span class="p">,</span>
+    <span class="s2">"count"</span><span class="p">,</span>
+    <span class="s2">"get"</span><span class="p">,</span>
+    <span class="s2">"get_many"</span><span class="p">,</span>
+    <span class="s2">"exists"</span><span class="p">,</span>
+    <span class="s2">"close_stores"</span><span class="p">,</span>
+    <span class="s2">"configure_http"</span><span class="p">,</span>
+    <span class="s2">"configure_remote"</span><span class="p">,</span>
+    <span class="s2">"enrich"</span><span class="p">,</span>
+    <span class="s2">"enrich_dois"</span><span class="p">,</span>
+    <span class="s2">"get_mode"</span><span class="p">,</span>
+    <span class="s2">"info"</span><span class="p">,</span>
+    <span class="s2">"refresh_stats"</span><span class="p">,</span>
     <span class="c1"># Re-exported for convenience</span>
-    <span class="s2">&quot;Work&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;SearchResult&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;Config&quot;</span><span class="p">,</span>
+    <span class="s2">"Work"</span><span class="p">,</span>
+    <span class="s2">"SearchResult"</span><span class="p">,</span>
+    <span class="s2">"Config"</span><span class="p">,</span>
 <span class="p">]</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_work_from_row</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Work</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Build a :class:`Work` from a store row, or ``None`` for a miss.</span>
+
+<span class="sd">    ``metadata`` is a declared JSON field, so the primitive returns it as a</span>
+<span class="sd">    ``dict``. Nothing decompresses or re-parses it here — the previous</span>
+<span class="sd">    zlib-or-plain-text ambiguity (two modules disagreed about which</span>
+<span class="sd">    ``works.metadata`` held) cannot recur, because the schema decides.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">row</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"metadata"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">metadata</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">Work</span><span class="o">.</span><span class="n">from_metadata</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"doi"</span><span class="p">)),</span> <span class="n">metadata</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_get_http_client</span><span class="p">():</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get HTTP client (lazy import to avoid circular dependency).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Get HTTP client (lazy import to avoid circular dependency)."""</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.._remote</span><span class="w"> </span><span class="kn">import</span> <span class="n">RemoteClient</span>  <span class="c1"># Uses enhanced client with collections</span>
 
     <span class="k">return</span> <span class="n">RemoteClient</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">get_api_url</span><span class="p">())</span>
@@ -217,7 +237,7 @@
     <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
     <span class="n">with_if</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SearchResult</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Full-text search across works.</span>
 
 <span class="sd">    Uses FTS5 index for fast searching across titles, abstracts, and authors.</span>
@@ -233,10 +253,10 @@
 
 <span class="sd">    Example:</span>
 <span class="sd">        &gt;&gt;&gt; from crossref_local import search</span>
-<span class="sd">        &gt;&gt;&gt; results = search(&quot;machine learning&quot;)</span>
-<span class="sd">        &gt;&gt;&gt; print(f&quot;Found {results.total} matches&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+<span class="sd">        &gt;&gt;&gt; results = search("machine learning")</span>
+<span class="sd">        &gt;&gt;&gt; print(f"Found {results.total} matches")</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">offset</span><span class="p">,</span> <span class="n">with_if</span><span class="o">=</span><span class="n">with_if</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">fts</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span></div>
@@ -246,7 +266,7 @@
 <div class="viewcode-block" id="count">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.count">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Count matching works without fetching results.</span>
 
 <span class="sd">    Args:</span>
@@ -254,8 +274,8 @@
 
 <span class="sd">    Returns:</span>
 <span class="sd">        Number of matching works</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="n">result</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="n">query</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">total</span>
@@ -266,7 +286,7 @@
 <div class="viewcode-block" id="get">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.get">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="n">doi</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Work</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get a work by DOI.</span>
 
 <span class="sd">    Args:</span>
@@ -277,24 +297,20 @@
 
 <span class="sd">    Example:</span>
 <span class="sd">        &gt;&gt;&gt; from crossref_local import get</span>
-<span class="sd">        &gt;&gt;&gt; work = get(&quot;10.1038/nature12373&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; work = get("10.1038/nature12373")</span>
 <span class="sd">        &gt;&gt;&gt; print(work.title)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
-    <span class="n">db</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">()</span>
-    <span class="n">metadata</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_metadata</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">metadata</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">Work</span><span class="o">.</span><span class="n">from_metadata</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">metadata</span><span class="p">)</span>
-    <span class="k">return</span> <span class="kc">None</span></div>
+    <span class="k">return</span> <span class="n">_work_from_row</span><span class="p">(</span><span class="n">works_store</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">({</span><span class="s2">"doi"</span><span class="p">:</span> <span class="n">doi</span><span class="p">}))</span></div>
 
 
 
 <div class="viewcode-block" id="get_many">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.get_many">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_many</span><span class="p">(</span><span class="n">dois</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Work</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get multiple works by DOI.</span>
 
 <span class="sd">    Args:</span>
@@ -302,16 +318,19 @@
 
 <span class="sd">    Returns:</span>
 <span class="sd">        List of Work objects (missing DOIs are skipped)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">client</span><span class="o">.</span><span class="n">get_many</span><span class="p">(</span><span class="n">dois</span><span class="p">)</span>
-    <span class="n">db</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">()</span>
+    <span class="c1"># One point lookup per DOI. The store has no batch read and no `IN`</span>
+    <span class="c1"># predicate, so this is N round trips rather than one — the same shape</span>
+    <span class="c1"># the previous implementation had, at a higher per-row cost.</span>
+    <span class="n">store</span> <span class="o">=</span> <span class="n">works_store</span><span class="p">()</span>
     <span class="n">works</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">doi</span> <span class="ow">in</span> <span class="n">dois</span><span class="p">:</span>
-        <span class="n">metadata</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">get_metadata</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">metadata</span><span class="p">:</span>
-            <span class="n">works</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Work</span><span class="o">.</span><span class="n">from_metadata</span><span class="p">(</span><span class="n">doi</span><span class="p">,</span> <span class="n">metadata</span><span class="p">))</span>
+        <span class="n">work</span> <span class="o">=</span> <span class="n">_work_from_row</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">get</span><span class="p">({</span><span class="s2">"doi"</span><span class="p">:</span> <span class="n">doi</span><span class="p">}))</span>
+        <span class="k">if</span> <span class="n">work</span><span class="p">:</span>
+            <span class="n">works</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">work</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">works</span></div>
 
 
@@ -319,7 +338,7 @@
 <div class="viewcode-block" id="exists">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.exists">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="n">doi</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Check if a DOI exists in the database.</span>
 
 <span class="sd">    Args:</span>
@@ -327,38 +346,18 @@
 
 <span class="sd">    Returns:</span>
 <span class="sd">        True if DOI exists</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">client</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">doi</span><span class="p">)</span>
-    <span class="n">db</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">()</span>
-    <span class="n">row</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">fetchone</span><span class="p">(</span><span class="s2">&quot;SELECT 1 FROM works WHERE doi = ?&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">doi</span><span class="p">,))</span>
-    <span class="k">return</span> <span class="n">row</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
-
-
-
-<div class="viewcode-block" id="configure">
-<a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.configure">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">configure</span><span class="p">(</span><span class="n">db_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Configure for local database access.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        db_path: Path to CrossRef SQLite database</span>
-
-<span class="sd">    Example:</span>
-<span class="sd">        &gt;&gt;&gt; from crossref_local import configure</span>
-<span class="sd">        &gt;&gt;&gt; configure(&quot;/path/to/crossref.db&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">Config</span><span class="o">.</span><span class="n">set_db_path</span><span class="p">(</span><span class="n">db_path</span><span class="p">)</span>
-    <span class="n">close_db</span><span class="p">()</span>  <span class="c1"># Reset singleton to use new path</span></div>
+    <span class="k">return</span> <span class="n">works_store</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">({</span><span class="s2">"doi"</span><span class="p">:</span> <span class="n">doi</span><span class="p">})</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
 
 
 
 <div class="viewcode-block" id="configure_http">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.configure_http">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">configure_http</span><span class="p">(</span><span class="n">api_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:8333&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">configure_http</span><span class="p">(</span><span class="n">api_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"http://localhost:8333"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Configure for HTTP API access.</span>
 
 <span class="sd">    Args:</span>
@@ -366,11 +365,11 @@
 
 <span class="sd">    Example:</span>
 <span class="sd">        &gt;&gt;&gt; from crossref_local import configure_http</span>
-<span class="sd">        &gt;&gt;&gt; configure_http(&quot;http://localhost:8333&quot;)</span>
+<span class="sd">        &gt;&gt;&gt; configure_http("http://localhost:8333")</span>
 <span class="sd">        &gt;&gt;&gt; # Or via SSH tunnel:</span>
 <span class="sd">        &gt;&gt;&gt; # ssh -L 8333:127.0.0.1:8333 your-server</span>
 <span class="sd">        &gt;&gt;&gt; configure_http()  # Uses default localhost:8333</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">Config</span><span class="o">.</span><span class="n">set_api_url</span><span class="p">(</span><span class="n">api_url</span><span class="p">)</span></div>
 
 
@@ -386,7 +385,7 @@
     <span class="n">include_citations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">include_references</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SearchResult</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Enrich search results with full metadata (citations, references).</span>
 
 <span class="sd">    The search() function returns basic metadata for speed. This function</span>
@@ -402,11 +401,11 @@
 
 <span class="sd">    Example:</span>
 <span class="sd">        &gt;&gt;&gt; from crossref_local import search, enrich</span>
-<span class="sd">        &gt;&gt;&gt; results = search(&quot;machine learning&quot;, limit=10)</span>
+<span class="sd">        &gt;&gt;&gt; results = search("machine learning", limit=10)</span>
 <span class="sd">        &gt;&gt;&gt; enriched = enrich(results)</span>
 <span class="sd">        &gt;&gt;&gt; for work in enriched:</span>
-<span class="sd">        ...     print(f&quot;{work.title}: {work.citation_count} citations&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        ...     print(f"{work.title}: {work.citation_count} citations")</span>
+<span class="sd">    """</span>
     <span class="n">enriched_works</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">work</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">works</span><span class="p">:</span>
         <span class="n">full_work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="n">work</span><span class="o">.</span><span class="n">doi</span><span class="p">)</span>
@@ -432,7 +431,7 @@
     <span class="n">include_citations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">include_references</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Work</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Enrich a list of DOIs with full metadata.</span>
 
 <span class="sd">    Fetches complete metadata for each DOI including citation counts</span>
@@ -448,10 +447,10 @@
 
 <span class="sd">    Example:</span>
 <span class="sd">        &gt;&gt;&gt; from crossref_local import enrich_dois</span>
-<span class="sd">        &gt;&gt;&gt; works = enrich_dois([&quot;10.1038/nature12373&quot;, &quot;10.1126/science.aax0758&quot;])</span>
+<span class="sd">        &gt;&gt;&gt; works = enrich_dois(["10.1038/nature12373", "10.1126/science.aax0758"])</span>
 <span class="sd">        &gt;&gt;&gt; for w in works:</span>
-<span class="sd">        ...     print(f&quot;{w.doi}: {w.citation_count} citations, {len(w.references)} refs&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        ...     print(f"{w.doi}: {w.citation_count} citations, {len(w.references)} refs")</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">get_many</span><span class="p">(</span><span class="n">dois</span><span class="p">)</span></div>
 
 
@@ -459,12 +458,12 @@
 <div class="viewcode-block" id="get_mode">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.get_mode">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_mode</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get current mode.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        &quot;db&quot; or &quot;http&quot;</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        "db" or "http"</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span></div>
 
 
@@ -472,79 +471,78 @@
 <div class="viewcode-block" id="info">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.info">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">info</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Get database/API information.</span>
+
+<span class="sd">    Fast by design: counts come from the cache collection (exact, written</span>
+<span class="sd">    by :func:`refresh_stats`) and from nowhere else. When the cache is</span>
+<span class="sd">    absent the counts are reported as ``"unavailable"`` rather than</span>
+<span class="sd">    measured, because measuring means reading every record. The</span>
+<span class="sd">    ``counts_source`` field always labels which happened (``"exact"`` /</span>
+<span class="sd">    ``"estimated"`` / ``"unavailable"``).</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        Dictionary with database stats and mode info</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">mode</span> <span class="o">=</span> <span class="n">Config</span><span class="o">.</span><span class="n">get_mode</span><span class="p">()</span>
 
-    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;http&quot;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">"http"</span><span class="p">:</span>
         <span class="n">client</span> <span class="o">=</span> <span class="n">_get_http_client</span><span class="p">()</span>
         <span class="c1"># Use /health (fast) instead of /info (slow COUNT(*) on large DBs)</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">health</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">health</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
         <span class="k">except</span> <span class="p">(</span><span class="ne">ConnectionError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
             <span class="k">return</span> <span class="p">{</span>
-                <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;unreachable&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;api_url&quot;</span><span class="p">:</span> <span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span>
-                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Cannot connect to </span><span class="si">{</span><span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="s2">"mode"</span><span class="p">:</span> <span class="s2">"http"</span><span class="p">,</span>
+                <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"unreachable"</span><span class="p">,</span>
+                <span class="s2">"api_url"</span><span class="p">:</span> <span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span>
+                <span class="s2">"error"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Cannot connect to </span><span class="si">{</span><span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
             <span class="p">}</span>
         <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span> <span class="k">if</span> <span class="n">health</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;healthy&quot;</span> <span class="k">else</span> <span class="s2">&quot;degraded&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;api_url&quot;</span><span class="p">:</span> <span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span>
-            <span class="s2">&quot;db_path&quot;</span><span class="p">:</span> <span class="n">health</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;database_path&quot;</span><span class="p">,</span> <span class="s2">&quot;unknown&quot;</span><span class="p">),</span>
+            <span class="s2">"mode"</span><span class="p">:</span> <span class="s2">"http"</span><span class="p">,</span>
+            <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"ok"</span> <span class="k">if</span> <span class="n">health</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"status"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"healthy"</span> <span class="k">else</span> <span class="s2">"degraded"</span><span class="p">,</span>
+            <span class="s2">"api_url"</span><span class="p">:</span> <span class="n">client</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span>
+            <span class="s2">"store"</span><span class="p">:</span> <span class="n">health</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"store"</span><span class="p">,</span> <span class="s2">"unknown"</span><span class="p">),</span>
         <span class="p">}</span>
         <span class="c1"># Try /info with short timeout for counts</span>
         <span class="n">old_timeout</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">timeout</span>
         <span class="n">client</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="mi">5</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">info_data</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">_request</span><span class="p">(</span><span class="s2">&quot;/info&quot;</span><span class="p">)</span>
+            <span class="n">info_data</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">_request</span><span class="p">(</span><span class="s2">"/info"</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">info_data</span><span class="p">:</span>
-                <span class="n">result</span><span class="p">[</span><span class="s2">&quot;works&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;total_papers&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-                <span class="n">result</span><span class="p">[</span><span class="s2">&quot;fts_indexed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fts_indexed&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-                <span class="n">result</span><span class="p">[</span><span class="s2">&quot;citations&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;citations&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"works"</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"total_papers"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"fts_indexed"</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"fts_indexed"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"citations"</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"citations"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="c1"># Older servers do not send counts_source — label their</span>
+                <span class="c1"># MAX(rowid)-style numbers honestly as estimates.</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"counts_source"</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                    <span class="s2">"counts_source"</span><span class="p">,</span> <span class="s2">"estimated"</span>
+                <span class="p">)</span>
+                <span class="n">result</span><span class="p">[</span><span class="s2">"counts_computed_at"</span><span class="p">]</span> <span class="o">=</span> <span class="n">info_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                    <span class="s2">"counts_computed_at"</span>
+                <span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;works&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;fts_indexed&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;citations&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">result</span><span class="p">[</span><span class="s2">&quot;note&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;/info timed out (server may need update)&quot;</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"works"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"fts_indexed"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"citations"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"counts_source"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"unavailable"</span>
+            <span class="n">result</span><span class="p">[</span><span class="s2">"note"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"/info timed out (server may need update)"</span>
         <span class="k">finally</span><span class="p">:</span>
             <span class="n">client</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">old_timeout</span>
         <span class="k">return</span> <span class="n">result</span>
 
-    <span class="n">db</span> <span class="o">=</span> <span class="n">get_db</span><span class="p">()</span>
-
-    <span class="c1"># Get work count</span>
-    <span class="n">row</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">fetchone</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) as count FROM works&quot;</span><span class="p">)</span>
-    <span class="n">work_count</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="mi">0</span>
-
-    <span class="c1"># Get FTS count</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">row</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">fetchone</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) as count FROM works_fts&quot;</span><span class="p">)</span>
-        <span class="n">fts_count</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="mi">0</span>
-    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-        <span class="n">fts_count</span> <span class="o">=</span> <span class="mi">0</span>
-
-    <span class="c1"># Get citations count</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">row</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">fetchone</span><span class="p">(</span><span class="s2">&quot;SELECT COUNT(*) as count FROM citations&quot;</span><span class="p">)</span>
-        <span class="n">citation_count</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="n">row</span> <span class="k">else</span> <span class="mi">0</span>
-    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-        <span class="n">citation_count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="c1"># Cache-only counts. NEVER a scan on the read path — see _core/stats.py.</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">get_counts</span><span class="p">()</span>
 
     <span class="k">return</span> <span class="p">{</span>
-        <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;db&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="s2">&quot;ok&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;db_path&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">get_db_path</span><span class="p">()),</span>
-        <span class="s2">&quot;works&quot;</span><span class="p">:</span> <span class="n">work_count</span><span class="p">,</span>
-        <span class="s2">&quot;fts_indexed&quot;</span><span class="p">:</span> <span class="n">fts_count</span><span class="p">,</span>
-        <span class="s2">&quot;citations&quot;</span><span class="p">:</span> <span class="n">citation_count</span><span class="p">,</span>
+        <span class="s2">"mode"</span><span class="p">:</span> <span class="s2">"db"</span><span class="p">,</span>
+        <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"ok"</span><span class="p">,</span>
+        <span class="s2">"store"</span><span class="p">:</span> <span class="n">Config</span><span class="o">.</span><span class="n">describe_store</span><span class="p">(),</span>
+        <span class="o">**</span><span class="n">counts</span><span class="p">,</span>
     <span class="p">}</span></div>
 
+
+<span class="c1"># EOF</span>
 </pre></div>
 
            </div>

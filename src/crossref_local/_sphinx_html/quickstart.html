@@ -51,8 +51,8 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -98,7 +98,7 @@
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -111,7 +111,7 @@
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -124,12 +124,14 @@
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="api/crossref_local.html#data-classes">Data Classes</a><ul>
@@ -175,14 +177,14 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">search</span>
 
 <span class="c1"># Full-text search</span>
-<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"machine learning"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> matches&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> matches"</span><span class="p">)</span>
 
 <span class="k">for</span> <span class="n">work</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  DOI: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Journal: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">journal</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"- </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  DOI: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  Journal: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">journal</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
@@ -190,13 +192,13 @@
 <h3>Get by DOI<a class="headerlink" href="#get-by-doi" title="Link to this heading"></a></h3>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">get</span>
 
-<span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">&quot;10.1038/nature12373&quot;</span><span class="p">)</span>
+<span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">"10.1038/nature12373"</span><span class="p">)</span>
 
 <span class="k">if</span> <span class="n">work</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Title: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Authors: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">work</span><span class="o">.</span><span class="n">authors</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Year: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Citations: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Title: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Authors: </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">work</span><span class="o">.</span><span class="n">authors</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Year: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Citations: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
@@ -205,10 +207,10 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_http</span><span class="p">,</span> <span class="n">search</span>
 
 <span class="c1"># Configure to use HTTP API</span>
-<span class="n">configure_http</span><span class="p">(</span><span class="s2">&quot;http://localhost:31291&quot;</span><span class="p">)</span>
+<span class="n">configure_http</span><span class="p">(</span><span class="s2">"http://localhost:31291"</span><span class="p">)</span>
 
 <span class="c1"># Same API works transparently</span>
-<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;CRISPR&quot;</span><span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"CRISPR"</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
@@ -218,13 +220,13 @@
 <section id="search">
 <h3>Search<a class="headerlink" href="#search" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Basic search</span>
-crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;neural networks&quot;</span>
+crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">"neural networks"</span>
 
 <span class="c1"># With options</span>
-crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;machine learning&quot;</span><span class="w"> </span>-n<span class="w"> </span><span class="m">20</span><span class="w"> </span>-a<span class="w"> </span>--impact-factor
+crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">"machine learning"</span><span class="w"> </span>-n<span class="w"> </span><span class="m">20</span><span class="w"> </span>-a<span class="w"> </span>--impact-factor
 
 <span class="c1"># Output as JSON</span>
-crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;deep learning&quot;</span><span class="w"> </span>--json
+crossref-local<span class="w"> </span>search<span class="w"> </span><span class="s2">"deep learning"</span><span class="w"> </span>--json
 </pre></div>
 </div>
 </section>
@@ -246,7 +248,7 @@ crossref-local<span class="w"> </span>relay
 crossref-local<span class="w"> </span>relay<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span>
 
 <span class="c1"># Then connect from another machine</span>
-crossref-local<span class="w"> </span>--http<span class="w"> </span>search<span class="w"> </span><span class="s2">&quot;query&quot;</span>
+crossref-local<span class="w"> </span>--http<span class="w"> </span>search<span class="w"> </span><span class="s2">"query"</span>
 </pre></div>
 </div>
 </section>
@@ -264,7 +266,8 @@ crossref-local<span class="w"> </span>mcp<span class="w"> </span>start<span clas
 <section id="environment-variables">
 <h2>Environment Variables<a class="headerlink" href="#environment-variables" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">CROSSREF_LOCAL_DB</span></code>: Path to SQLite database</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">SCITEX_STORE_DSN</span></code>: Connection string for the shared store, resolved by
+<code class="xref py py-func docutils literal notranslate"><span class="pre">scitex_dev.store.host_store()</span></code> (default: this host’s own store)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">CROSSREF_LOCAL_API_URL</span></code>: HTTP API URL for remote access</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">CROSSREF_LOCAL_MODE</span></code>: Force mode (<code class="docutils literal notranslate"><span class="pre">db</span></code> or <code class="docutils literal notranslate"><span class="pre">http</span></code>)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">CROSSREF_LOCAL_HOST</span></code>: Host for relay server (default: 0.0.0.0)</p></li>

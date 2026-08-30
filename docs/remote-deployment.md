@@ -16,8 +16,9 @@ Run CrossRef Local as a persistent MCP server accessible over the network.
 ## Quick Start
 
 ```bash
-# Start MCP server with HTTP transport
-CROSSREF_LOCAL_DB=/path/to/crossref.db \
+# Start MCP server with HTTP transport.
+# The corpus lives in this host's shared store; scitex-dev resolves it.
+# Set SCITEX_STORE_DSN only to point at a store other than this host's.
 crossref-local run-server-mcp -t http --host 0.0.0.0 --port 8082
 ```
 
@@ -48,7 +49,7 @@ sudo nano /etc/systemd/system/crossref-mcp.service
 
 Key settings to customize:
 - `User` and `Group` - your user account
-- `CROSSREF_LOCAL_DB` - path to your database
+- `SCITEX_STORE_DSN` - only if the store is not this host's own
 - `--port` - change if 8082 is in use
 
 ### 2. Enable and start
@@ -86,12 +87,15 @@ services:
              crossref-local run-server-mcp -t http --host 0.0.0.0 --port 8082"
     ports:
       - "8082:8082"
-    volumes:
-      - /path/to/crossref.db:/data/crossref.db:ro
     environment:
-      - CROSSREF_LOCAL_DB=/data/crossref.db
+      # Reach the host's store from inside the container.
+      - SCITEX_STORE_DSN=${SCITEX_STORE_DSN}
     restart: unless-stopped
 ```
+
+There is no volume to mount: the corpus is not a file. A container needs a
+route to the store instead — `SCITEX_STORE_DSN` naming a reachable address,
+or the host's store socket bind-mounted in.
 
 ### Using Dockerfile
 
@@ -99,8 +103,6 @@ services:
 FROM python:3.11-slim
 
 RUN pip install crossref-local[mcp]
-
-ENV CROSSREF_LOCAL_DB=/data/crossref.db
 
 EXPOSE 8082
 
@@ -112,7 +114,7 @@ Build and run:
 docker build -t crossref-mcp .
 docker run -d \
   -p 8082:8082 \
-  -v /path/to/crossref.db:/data/crossref.db:ro \
+  -e SCITEX_STORE_DSN="$SCITEX_STORE_DSN" \
   --name crossref-mcp \
   crossref-mcp
 ```
@@ -147,21 +149,18 @@ You can configure both local and remote servers:
   "mcpServers": {
     "crossref-local": {
       "command": "crossref-local",
-      "args": ["run-server-mcp"],
-      "env": {
-        "CROSSREF_LOCAL_DB": "/local/path/crossref.db"
-      }
+      "args": ["run-server-mcp"]
     },
     "crossref-remote": {
-      "url": "http://db-host:8082/mcp"
+      "url": "http://store-host:8082/mcp"
     }
   }
 }
 ```
 
-> Replace `db-host` with the actual hostname or IP of the machine
-> that owns the CrossRef SQLite DB (any SSH-reachable Linux box —
-> commonly a NAS or workstation; the package is host-agnostic).
+> Replace `store-host` with the actual hostname or IP of the machine whose
+> shared store holds the corpus (any reachable Linux box — commonly a NAS or
+> workstation; the package is host-agnostic).
 
 ## Security Considerations
 
@@ -211,7 +210,7 @@ server {
 journalctl -u crossref-mcp -n 50
 
 # Common issues:
-# - Database path doesn't exist
+# - Store unreachable (wrong SCITEX_STORE_DSN, or the host's store is down)
 # - Port already in use
 # - Permission denied
 ```
@@ -238,14 +237,14 @@ If using SSH transport and experiencing hangs, switch to HTTP:
 {
   "crossref-remote": {
     "command": "ssh",
-    "args": ["db-host", "crossref-local", "run-server-mcp"]
+    "args": ["store-host", "crossref-local", "run-server-mcp"]
   }
 }
 
 // After (HTTP - recommended)
 {
   "crossref-remote": {
-    "url": "http://db-host:8082/mcp"
+    "url": "http://store-host:8082/mcp"
   }
 }
 ```
@@ -254,9 +253,13 @@ If using SSH transport and experiencing hangs, switch to HTTP:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CROSSREF_LOCAL_DB` | Path to SQLite database | Auto-detect |
+| `SCITEX_STORE_DSN` | Connection string for the shared store, read by `scitex_dev.store.host_store()` | This host's own store |
 | `CROSSREF_LOCAL_MCP_HOST` | Host to bind | `localhost` |
 | `CROSSREF_LOCAL_MCP_PORT` | Port to listen on | `8082` |
+
+`crossref-local` never builds or reads a DSN itself — resolution belongs to
+`scitex_dev.store.host_store()`, so setting `SCITEX_STORE_DSN` is the only
+way to point it at a store other than this host's.
 
 ## References
 

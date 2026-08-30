@@ -18,6 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import scitex as stx
+
 from crossref_local import search, get, count, info
 
 
@@ -27,7 +29,9 @@ def section(title: str) -> None:
     print(f"{'─'*70}\n")
 
 
-def demo():
+@stx.session
+def main(CONFIG=stx.session.INJECTED, logger=stx.session.INJECTED):
+    """Walk through the four features that matter for LLM workflows."""
     db = info()
 
     print("\n" + "━"*70)
@@ -66,7 +70,7 @@ def demo():
     print("  Calculate real impact factors from citation data.\n")
 
     try:
-        from crossref_local.impact_factor import ImpactFactorCalculator
+        from crossref_local._impact_factor import ImpactFactorCalculator
 
         journals = [
             ("Nature", "Top multidisciplinary"),
@@ -168,6 +172,8 @@ def demo():
   └─────────────────────────────────────────────────────────────────┘
 """)
 
+    return 0
+
 
 if __name__ == "__main__":
-    demo()
+    main()

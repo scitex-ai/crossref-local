@@ -203,11 +203,12 @@ def test_info_returns_dict_instance(_db_info):
     assert isinstance(_db_info, dict)
 
 
-def test_info_dict_contains_db_path_key(_db_info):
-    # Arrange
+def test_info_dict_contains_store_key(_db_info):
+    # Arrange — `db_path` became `store`: there is no file to name, and the
+    # value is a credential-free description of the resolved store.
     # Act
     # Assert
-    assert "db_path" in _db_info
+    assert "store" in _db_info
 
 
 def test_info_dict_contains_works_key(_db_info):
@@ -246,10 +247,11 @@ def test_info_dict_contains_counts_source_key(_db_info):
 
 
 def test_info_counts_source_is_honest_label(_db_info):
-    # Arrange
+    # Arrange — the cheap row-id estimator is gone with the engine that
+    # made it possible, so there is no third label to report.
     # Act
     # Assert
-    assert _db_info["counts_source"] in {"exact", "estimated", "unavailable"}
+    assert _db_info["counts_source"] in {"exact", "unavailable"}
 
 
 # ---------- enrich() ----------

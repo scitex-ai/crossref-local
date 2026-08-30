@@ -3,29 +3,59 @@
 # Timestamp: "2026-02-10 (ywatanabe)"
 # File: /home/ywatanabe/proj/crossref-local/examples/05_abstract_coverage.py
 
-"""Calculate abstract coverage statistics for Crossref Local database.
+"""Calculate abstract coverage statistics for the CrossRef Local corpus.
 
 This script calculates:
 1. Global abstract availability ratio
 2. Per-type coverage (journal-article, book-chapter, etc.)
 3. Per-publisher coverage (by member ID)
 4. Per-year coverage
-"""
 
-import sqlite3
-from pathlib import Path
+HOW IT READS, AND WHY IT IS SLOW
+--------------------------------
+It used to open the corpus file directly and let the engine do the work:
+four aggregate queries with ``json_extract`` / ``GROUP BY`` / ``HAVING``,
+each returning a handful of rows.
+
+The corpus now lives in the shared store primitive, which has no filtered
+read, no aggregate and no count. ``works_store().rows()`` returns EVERY
+record, and the grouping happens here in Python. So this script reads the
+whole collection exactly once and accumulates all four breakdowns in that
+single pass — one pass rather than four, because each one costs the same
+full read.
+
+Be honest about what that means: on the full corpus this is a very
+expensive script, not a quick stat. Nothing in this package can make it
+cheaper, because the number it wants is not one the store keeps.
+"""
 
 import scitex as stx
 
-# Database path
-DB_PATH = Path.home() / "proj" / "crossref-local" / "data" / "crossref.db"
+from crossref_local._core.store import works_store
 
 
-def get_connection():
-    """Get database connection."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _has_abstract(values) -> bool:
+    """Whether this work carries a non-empty abstract.
+
+    Reads the denormalised ``abstract`` field, which the ingest path writes
+    from the same CrossRef ``abstract`` key the old ``json_extract(metadata,
+    '$.abstract')`` expression pulled out — same source, evaluated at write
+    time instead of on every row of every query.
+    """
+    return bool((values.get("abstract") or "").strip())
+
+
+def _member_of(values):
+    """The CrossRef member (publisher) id, or None.
+
+    Not a denormalised field, so it comes out of ``metadata`` — which the
+    primitive returns as a dict, no manual decode.
+    """
+    metadata = values.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    member = metadata.get("member")
+    return str(member) if member not in (None, "") else None
 
 
 @stx.session
@@ -40,31 +70,61 @@ def main(
     Args:
         top_n: Number of top publishers to show
     """
-    conn = get_connection()
-    cursor = conn.cursor()
-
     # =========================================================================
-    # 1. Global Coverage
+    # 0. The single pass
     # =========================================================================
     logger.info("=" * 70)
     logger.info("ABSTRACT COVERAGE STATISTICS (Crossref)")
     logger.info("=" * 70)
+    logger.info("")
+    logger.info("Reading the whole works collection (this is the slow part).")
 
-    # Count total and those with abstract in metadata JSON
-    cursor.execute("""
-        SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(metadata, '$.abstract') IS NOT NULL
-                      AND json_extract(metadata, '$.abstract') != '' THEN 1 ELSE 0 END) as with_abstract
-        FROM works
-    """)
-    result = cursor.fetchone()
+    total = 0
+    with_abstract = 0
+    by_type = {}
+    by_member = {}
+    by_year = {}
 
-    total = result["total"]
-    with_abstract = result["with_abstract"]
+    def _bump(bucket, key, has_abstract):
+        entry = bucket.setdefault(key, {"total": 0, "with_abstract": 0})
+        entry["total"] += 1
+        if has_abstract:
+            entry["with_abstract"] += 1
+
+    for row in works_store().rows():
+        values = row.values
+        has_abstract = _has_abstract(values)
+
+        total += 1
+        if has_abstract:
+            with_abstract += 1
+
+        work_type = values.get("work_type") or ""
+        if work_type:
+            _bump(by_type, work_type, has_abstract)
+
+        member = _member_of(values)
+        if member:
+            _bump(by_member, member, has_abstract)
+
+        year = values.get("year")
+        if isinstance(year, int) and 2014 <= year <= 2024:
+            _bump(by_year, year, has_abstract)
+
+    if total == 0:
+        logger.warning(
+            "The works collection is empty. Populate it with "
+            "`crossref-local update-db`, then re-run this script."
+        )
+        return 1
+
+    # =========================================================================
+    # 1. Global Coverage
+    # =========================================================================
     ratio = (with_abstract / total) * 100
 
-    logger.info(f"\nGlobal Statistics:")
+    logger.info("")
+    logger.info("Global Statistics:")
     logger.info(f"  Total works: {total:,}")
     logger.info(f"  With abstract: {with_abstract:,}")
     logger.info(f"  Coverage: {ratio:.1f}%")
@@ -79,46 +139,31 @@ def main(
         "(Note: book-review, editorial, letter, etc. often lack abstracts by design)"
     )
 
-    cursor.execute("""
-        SELECT
-            type,
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(metadata, '$.abstract') IS NOT NULL
-                      AND json_extract(metadata, '$.abstract') != '' THEN 1 ELSE 0 END) as with_abstract
-        FROM works
-        WHERE type IS NOT NULL AND type != ''
-        GROUP BY type
-        ORDER BY total DESC
-        LIMIT 25
-    """)
-    types = cursor.fetchall()
+    def _coverage(entry):
+        return (
+            (entry["with_abstract"] / entry["total"]) * 100
+            if entry["total"] > 0
+            else 0
+        )
+
+    # Top 25 by volume, as the old `ORDER BY total DESC LIMIT 25` did.
+    types = sorted(by_type.items(), key=lambda kv: -kv[1]["total"])[:25]
 
     logger.info(f"\n{'Work Type':<35} {'Total':>15} {'Abstract':>15} {'Coverage':>10}")
     logger.info("-" * 77)
-    for row in types:
-        coverage = (
-            (row["with_abstract"] / row["total"]) * 100 if row["total"] > 0 else 0
-        )
+    for work_type, entry in types:
         logger.info(
-            f"{row['type']:<35} {row['total']:>15,} {row['with_abstract']:>15,} {coverage:>9.1f}%"
+            f"{work_type:<35} {entry['total']:>15,} "
+            f"{entry['with_abstract']:>15,} {_coverage(entry):>9.1f}%"
         )
 
     # Highlight journal-article specifically
-    cursor.execute("""
-        SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(metadata, '$.abstract') IS NOT NULL
-                      AND json_extract(metadata, '$.abstract') != '' THEN 1 ELSE 0 END) as with_abstract
-        FROM works
-        WHERE type = 'journal-article'
-    """)
-    journal_article = cursor.fetchone()
+    journal_article = by_type.get("journal-article")
     if journal_article and journal_article["total"] > 0:
-        ja_coverage = (
-            journal_article["with_abstract"] / journal_article["total"]
-        ) * 100
+        ja_coverage = _coverage(journal_article)
         logger.info(
-            f"\n>>> Journal-article coverage: {ja_coverage:.1f}% ({journal_article['with_abstract']:,} / {journal_article['total']:,})"
+            f"\n>>> Journal-article coverage: {ja_coverage:.1f}% "
+            f"({journal_article['with_abstract']:,} / {journal_article['total']:,})"
         )
 
     # =========================================================================
@@ -128,29 +173,18 @@ def main(
     logger.info(f"Coverage by Publisher/Member (Top {top_n})")
     logger.info("-" * 70)
 
-    cursor.execute(f"""
-        SELECT
-            member,
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(metadata, '$.abstract') IS NOT NULL
-                      AND json_extract(metadata, '$.abstract') != '' THEN 1 ELSE 0 END) as with_abstract
-        FROM works
-        WHERE member IS NOT NULL
-        GROUP BY member
-        HAVING total > 10000
-        ORDER BY total DESC
-        LIMIT {top_n}
-    """)
-    members = cursor.fetchall()
+    # `HAVING total > 10000` in the old query — members below that are noise.
+    members = sorted(
+        (kv for kv in by_member.items() if kv[1]["total"] > 10000),
+        key=lambda kv: -kv[1]["total"],
+    )[:top_n]
 
     logger.info(f"\n{'Member ID':<15} {'Total':>15} {'Abstract':>15} {'Coverage':>10}")
     logger.info("-" * 57)
-    for row in members:
-        coverage = (
-            (row["with_abstract"] / row["total"]) * 100 if row["total"] > 0 else 0
-        )
+    for member, entry in members:
         logger.info(
-            f"{row['member']:<15} {row['total']:>15,} {row['with_abstract']:>15,} {coverage:>9.1f}%"
+            f"{member:<15} {entry['total']:>15,} "
+            f"{entry['with_abstract']:>15,} {_coverage(entry):>9.1f}%"
         )
 
     # =========================================================================
@@ -160,29 +194,19 @@ def main(
     logger.info("Coverage by Publication Year (Recent 10 Years)")
     logger.info("-" * 70)
 
-    cursor.execute("""
-        SELECT
-            CAST(strftime('%Y', created_date_time) AS INTEGER) as year,
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(metadata, '$.abstract') IS NOT NULL
-                      AND json_extract(metadata, '$.abstract') != '' THEN 1 ELSE 0 END) as with_abstract
-        FROM works
-        WHERE created_date_time IS NOT NULL
-          AND CAST(strftime('%Y', created_date_time) AS INTEGER) >= 2014
-          AND CAST(strftime('%Y', created_date_time) AS INTEGER) <= 2024
-        GROUP BY year
-        ORDER BY year DESC
-    """)
-    years = cursor.fetchall()
+    # The old query bucketed on `created_date_time`, a column that only the
+    # file-backed schema had. `year` is the publication year the ingest path
+    # derives from CrossRef's own date-parts, so these numbers are keyed on
+    # publication rather than deposit — which is what the heading already
+    # claimed they were.
+    years = sorted(by_year.items(), key=lambda kv: -kv[0])
 
     logger.info(f"\n{'Year':<10} {'Total':>15} {'Abstract':>15} {'Coverage':>10}")
     logger.info("-" * 52)
-    for row in years:
-        coverage = (
-            (row["with_abstract"] / row["total"]) * 100 if row["total"] > 0 else 0
-        )
+    for year, entry in years:
         logger.info(
-            f"{row['year']:<10} {row['total']:>15,} {row['with_abstract']:>15,} {coverage:>9.1f}%"
+            f"{year:<10} {entry['total']:>15,} "
+            f"{entry['with_abstract']:>15,} {_coverage(entry):>9.1f}%"
         )
 
     # =========================================================================
@@ -192,7 +216,7 @@ def main(
     logger.info("SUMMARY (for documentation)")
     logger.info("=" * 70)
     logger.info(f"\nGlobal abstract coverage: {ratio:.1f}%")
-    logger.info(f"Total indexed works: {total:,}")
+    logger.info(f"Total works: {total:,}")
 
     # Save summary to CSV
     import pandas as pd
@@ -200,14 +224,12 @@ def main(
     # Type coverage
     type_data = [
         {
-            "type": row["type"],
-            "total": row["total"],
-            "with_abstract": row["with_abstract"],
-            "coverage": round((row["with_abstract"] / row["total"]) * 100, 1)
-            if row["total"] > 0
-            else 0,
+            "type": work_type,
+            "total": entry["total"],
+            "with_abstract": entry["with_abstract"],
+            "coverage": round(_coverage(entry), 1),
         }
-        for row in types
+        for work_type, entry in types
     ]
     df_type = pd.DataFrame(type_data)
     stx.io.save(df_type, "type_coverage.csv")
@@ -215,21 +237,18 @@ def main(
     # Year coverage
     year_data = [
         {
-            "year": row["year"],
-            "total": row["total"],
-            "with_abstract": row["with_abstract"],
-            "coverage": round((row["with_abstract"] / row["total"]) * 100, 1)
-            if row["total"] > 0
-            else 0,
+            "year": year,
+            "total": entry["total"],
+            "with_abstract": entry["with_abstract"],
+            "coverage": round(_coverage(entry), 1),
         }
-        for row in years
+        for year, entry in years
     ]
     df_year = pd.DataFrame(year_data)
     stx.io.save(df_year, "year_coverage.csv")
 
     logger.info("\nSaved: type_coverage.csv, year_coverage.csv")
 
-    conn.close()
     return 0
 
 
