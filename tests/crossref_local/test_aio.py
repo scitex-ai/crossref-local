@@ -225,12 +225,12 @@ async def test_aio_info_returns_dict_instance():
 
 
 @pytest.mark.asyncio
-async def test_aio_info_dict_contains_db_path_key():
-    # Arrange
+async def test_aio_info_dict_contains_store_key():
+    # Arrange — `db_path` became `store` when the corpus moved off a file.
     # Act
     info = await aio.info()
     # Assert
-    assert "db_path" in info
+    assert "store" in info
 
 
 @pytest.mark.asyncio

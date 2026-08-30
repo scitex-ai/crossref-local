@@ -50,8 +50,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -97,7 +97,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -110,7 +110,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -123,12 +123,14 @@
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#data-classes">Data Classes</a><ul>
@@ -192,8 +194,8 @@
 <div class="admonition-example admonition">
 <p class="admonition-title">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">search</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> matches&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"machine learning"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Found </span><span class="si">{</span><span class="n">results</span><span class="o">.</span><span class="n">total</span><span class="si">}</span><span class="s2"> matches"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -217,7 +219,7 @@
 <div class="admonition-example admonition">
 <p class="admonition-title">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">get</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">&quot;10.1038/nature12373&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">"10.1038/nature12373"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -276,27 +278,6 @@
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="crossref_local.configure">
-<span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">configure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/crossref_local/_core/api.html#configure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#crossref_local.configure" title="Link to this definition"></a></dt>
-<dd><p>Configure for local database access.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>db_path</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>) – Path to CrossRef SQLite database</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
-</dd>
-</dl>
-<div class="admonition-example admonition">
-<p class="admonition-title">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">configure</span><span class="p">(</span><span class="s2">&quot;/path/to/crossref.db&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="crossref_local.configure_http">
 <span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">configure_http</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'http://localhost:8333'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/crossref_local/_core/api.html#configure_http"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#crossref_local.configure_http" title="Link to this definition"></a></dt>
 <dd><p>Configure for HTTP API access.</p>
@@ -311,7 +292,31 @@
 <div class="admonition-example admonition">
 <p class="admonition-title">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_http</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">configure_http</span><span class="p">(</span><span class="s2">&quot;http://localhost:8333&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">configure_http</span><span class="p">(</span><span class="s2">"http://localhost:8333"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Or via SSH tunnel:</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># ssh -L 8333:127.0.0.1:8333 your-server</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">configure_http</span><span class="p">()</span>  <span class="c1"># Uses default localhost:8333</span>
+</pre></div>
+</div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="crossref_local.configure_remote">
+<span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">configure_remote</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">api_url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'http://localhost:8333'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#crossref_local.configure_remote" title="Link to this definition"></a></dt>
+<dd><p>Configure for HTTP API access.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>api_url</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a></span>) – URL of CrossRef Local API server</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></a></span></p>
+</dd>
+</dl>
+<div class="admonition-example admonition">
+<p class="admonition-title">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_http</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">configure_http</span><span class="p">(</span><span class="s2">"http://localhost:8333"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># Or via SSH tunnel:</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># ssh -L 8333:127.0.0.1:8333 your-server</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">configure_http</span><span class="p">()</span>  <span class="c1"># Uses default localhost:8333</span>
@@ -344,10 +349,10 @@ fetches full metadata for each work, adding citation counts and references.</p>
 <div class="admonition-example admonition">
 <p class="admonition-title">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">search</span><span class="p">,</span> <span class="n">enrich</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"machine learning"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">enriched</span> <span class="o">=</span> <span class="n">enrich</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">work</span> <span class="ow">in</span> <span class="n">enriched</span><span class="p">:</span>
-<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2"> citations&quot;</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">title</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">work</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2"> citations"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -377,9 +382,9 @@ and reference lists.</p>
 <div class="admonition-example admonition">
 <p class="admonition-title">Example</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">crossref_local</span><span class="w"> </span><span class="kn">import</span> <span class="n">enrich_dois</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">works</span> <span class="o">=</span> <span class="n">enrich_dois</span><span class="p">([</span><span class="s2">&quot;10.1038/nature12373&quot;</span><span class="p">,</span> <span class="s2">&quot;10.1126/science.aax0758&quot;</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">works</span> <span class="o">=</span> <span class="n">enrich_dois</span><span class="p">([</span><span class="s2">"10.1038/nature12373"</span><span class="p">,</span> <span class="s2">"10.1126/science.aax0758"</span><span class="p">])</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">works</span><span class="p">:</span>
-<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">w</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">w</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2"> citations, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">references</span><span class="p">)</span><span class="si">}</span><span class="s2"> refs&quot;</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">w</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">w</span><span class="o">.</span><span class="n">citation_count</span><span class="si">}</span><span class="s2"> citations, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">references</span><span class="p">)</span><span class="si">}</span><span class="s2"> refs"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -403,12 +408,63 @@ and reference lists.</p>
 <dt class="sig sig-object py" id="crossref_local.info">
 <span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">info</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/crossref_local/_core/api.html#info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#crossref_local.info" title="Link to this definition"></a></dt>
 <dd><p>Get database/API information.</p>
+<p>Fast by design: counts come from the cache collection (exact, written
+by <a class="reference internal" href="#crossref_local.refresh_stats" title="crossref_local.refresh_stats"><code class="xref py py-func docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a>) and from nowhere else. When the cache is
+absent the counts are reported as <code class="docutils literal notranslate"><span class="pre">&quot;unavailable&quot;</span></code> rather than
+measured, because measuring means reading every record. The
+<code class="docutils literal notranslate"><span class="pre">counts_source</span></code> field always labels which happened (<code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> /
+<code class="docutils literal notranslate"><span class="pre">&quot;estimated&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;unavailable&quot;</span></code>).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Dictionary with database stats and mode info</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="crossref_local.refresh_stats">
+<span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">refresh_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/crossref_local/_core/stats.html#refresh_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#crossref_local.refresh_stats" title="Link to this definition"></a></dt>
+<dd><p>Count every collection exactly and write the cache.</p>
+<p>Slow by design — it reads each collection in full — so run it from the
+ingest pipeline or <code class="docutils literal notranslate"><span class="pre">crossref-local</span> <span class="pre">sync-stats</span></code>, never from <code class="docutils literal notranslate"><span class="pre">info()</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>store</strong> – The corpus-stats store (opens this host’s if not provided).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The freshly computed counts, same shape as <code class="xref py py-func docutils literal notranslate"><span class="pre">get_counts()</span></code>
+(<code class="docutils literal notranslate"><span class="pre">counts_source:</span> <span class="pre">&quot;exact&quot;</span></code>).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="crossref_local.update">
+<span class="sig-prename descclassname"><span class="pre">crossref_local.</span></span><span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">since</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dry_run</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/crossref_local/_core/update.html#update"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#crossref_local.update" title="Link to this definition"></a></dt>
+<dd><p>Incrementally update the local CrossRef store.</p>
+<p>Fetches only the works newer than the recorded watermark (or <code class="docutils literal notranslate"><span class="pre">since</span></code>
+when given) from the CrossRef REST API and upserts them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>since</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Optional" title="(in Python v3.14)"><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></a>]</span>) – Override start date (<code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code>). Defaults to the recorded
+<code class="docutils literal notranslate"><span class="pre">last_sync_date</span></code>.</p></li>
+<li><p><strong>dry_run</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></a></span>) – Preview only — count what would be upserted without writing.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Statistics from the ingest run: <code class="docutils literal notranslate"><span class="pre">records_upserted</span></code>,
+<code class="docutils literal notranslate"><span class="pre">elapsed_seconds</span></code>, <code class="docutils literal notranslate"><span class="pre">last_sync_date</span></code> (and <code class="docutils literal notranslate"><span class="pre">dry_run</span></code> when
+applicable).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a></span></p>
 </dd>
 </dl>
 </dd></dl>
@@ -696,9 +752,9 @@ and reference lists.</p>
 </dl>
 <div class="admonition-examples admonition">
 <p class="admonition-title">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">&quot;10.1038/nature12373&quot;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;paper.json&quot;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;paper.bib&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;bibtex&quot;</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">work</span> <span class="o">=</span> <span class="n">get</span><span class="p">(</span><span class="s2">"10.1038/nature12373"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"paper.json"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">work</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"paper.bib"</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"bibtex"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -794,10 +850,10 @@ and reference lists.</p>
 </dl>
 <div class="admonition-examples admonition">
 <p class="admonition-title">Examples</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">&quot;machine learning&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;results.json&quot;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;results.bib&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;bibtex&quot;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;results.txt&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;text&quot;</span><span class="p">)</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">results</span> <span class="o">=</span> <span class="n">search</span><span class="p">(</span><span class="s2">"machine learning"</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"results.json"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"results.bib"</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"bibtex"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">results</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">"results.txt"</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"text"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

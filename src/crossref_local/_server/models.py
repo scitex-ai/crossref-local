@@ -47,10 +47,16 @@ class SearchResponse(BaseModel):
 
 
 class InfoResponse(BaseModel):
-    """Database info response.
+    """Corpus info response.
 
     ``counts_source`` labels how the counts were produced: ``"exact"``
-    (from the ``db_stats`` cache) or ``"estimated"`` (``MAX(rowid)``).
+    (from the ``crossref_corpus_stats`` cache) or ``"unavailable"`` (the
+    cache has not been written; the read path never counts). Older servers
+    also answered ``"estimated"``, which no longer has a producer.
+
+    ``store`` replaces the former ``database_path``: it is a
+    credential-free description of the store this host reads, never a
+    connection string.
     """
 
     name: str = "CrossRef Local API"
@@ -60,9 +66,9 @@ class InfoResponse(BaseModel):
     total_papers: int
     fts_indexed: int
     citations: Optional[int] = 0
-    counts_source: str = "estimated"
+    counts_source: str = "unavailable"
     counts_computed_at: Optional[str] = None
-    database_path: str
+    store: str
 
 
 class BatchRequest(BaseModel):

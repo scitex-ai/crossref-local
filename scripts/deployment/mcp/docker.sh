@@ -9,8 +9,15 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 CONTAINER_NAME="crossref-mcp"
 IMAGE_NAME="crossref-mcp"
-DB_PATH="${CROSSREF_LOCAL_DB:-$PROJECT_ROOT/data/crossref.db}"
 PORT="${CROSSREF_LOCAL_MCP_PORT:-8082}"
+
+# The corpus is a store the server connects to, not a file to bind-mount, so
+# there is no data volume here. SCITEX_STORE_DSN is forwarded from this
+# shell if it is set, and never echoed: a DSN can carry a password.
+STORE_ENV=()
+if [[ -n "${SCITEX_STORE_DSN:-}" ]]; then
+    STORE_ENV=(-e "SCITEX_STORE_DSN=${SCITEX_STORE_DSN}")
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -38,11 +45,13 @@ Commands:
   clean       Remove container and image
 
 Options:
-  --db PATH   Database path (default: \$CROSSREF_LOCAL_DB)
   --port PORT MCP server port (default: 8082)
 
+Environment:
+  SCITEX_STORE_DSN  Optional store override, forwarded into the container.
+
 Examples:
-  $0 run --db /data/crossref.db
+  $0 run
   $0 logs -f
   $0 stop
 EOF
@@ -56,14 +65,8 @@ cmd_build() {
 }
 
 cmd_run() {
-    # Validate database
-    if [[ ! -f "$DB_PATH" ]]; then
-        error "Database not found: $DB_PATH"
-        echo "Set CROSSREF_LOCAL_DB or use --db /path/to/db"
-        exit 1
-    fi
-
-    DB_PATH=$(realpath "$DB_PATH")
+    # Nothing to validate: there is no corpus file to find. The server opens
+    # the store at request time and reports its own failure honestly.
 
     # Build if image doesn't exist
     if ! docker image inspect "$IMAGE_NAME" &>/dev/null; then
@@ -77,7 +80,7 @@ cmd_run() {
     docker run -d \
         --name "$CONTAINER_NAME" \
         -p "$PORT:8082" \
-        -v "$DB_PATH:/data/crossref.db:ro" \
+        ${STORE_ENV[@]+"${STORE_ENV[@]}"} \
         --restart unless-stopped \
         "$IMAGE_NAME"
 
@@ -154,7 +157,6 @@ shift || true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --db) DB_PATH="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) break ;;

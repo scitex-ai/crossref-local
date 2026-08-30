@@ -11,6 +11,11 @@ non-canonical synonym — canonical is ``sync-<object>``); the old
 spelling stays as a hidden warn-phase deprecated alias (see
 ``_cli/deprecations.py``). Help is spec-built (CliHelp, audit §4b) with
 a free-form fallback for scitex-dev versions without the helper.
+
+The ``--db`` option is gone with the file it named: the corpus lives in
+the fleet's shared store, whose target is resolved by scitex-dev. The
+``--yes`` / ``--dry-run`` / ``--json`` contract is unchanged, including
+the refusal (exit 2) on a mutating run without ``--yes``.
 """
 
 import sys
@@ -18,19 +23,20 @@ import time
 
 import click
 
-_HELP_SUMMARY = "Recompute exact table counts into the db_stats cache."
+_HELP_SUMMARY = "Recompute exact collection counts into the corpus-stats cache."
 _HELP_DESCRIPTION = (
-    "Runs COUNT(*) on works / works_fts / citations (slow — ~17.5 s on "
-    "the production database) and writes the results to the db_stats "
-    'table, so info() and the HTTP /info endpoint report exact counts '
-    'instantly (counts_source: "exact"). Without this cache they fall '
-    "back to fast MAX(rowid) estimates.",
-    "Requires write access to the database. Run after ingest/rebuild "
-    "(`update-db` runs it automatically on success).",
+    "Counts the works, searchable and citations collections exactly and "
+    "writes the results to the crossref_corpus_stats collection, so "
+    "info() and the HTTP /info endpoint report exact counts instantly "
+    '(counts_source: "exact"). Without this cache they report '
+    '"unavailable" — the read path never counts, because the store has '
+    "no aggregate and counting means reading every record.",
+    "Slow by design: it reads each collection in full. Requires write "
+    "access to the store. Run after ingest/rebuild (`update-db` runs it "
+    "automatically on success).",
 )
 _HELP_EXAMPLES = (
     ("{prog} sync-stats --yes", "Recompute exact counts into the cache."),
-    ("{prog} sync-stats --yes --db /path/to/crossref.db", "Explicit DB path."),
     ("{prog} sync-stats --dry-run", "Show current cache state; no writes."),
     ("{prog} sync-stats --yes --json", "Machine-readable output."),
 )
@@ -44,7 +50,7 @@ try:
             summary=_HELP_SUMMARY,
             description=_HELP_DESCRIPTION,
             examples=tuple(Example(cmd, note) for cmd, note in _HELP_EXAMPLES),
-            exit_codes=((0, "success"), (1, "database missing or not writable"),
+            exit_codes=((0, "success"), (1, "store unreachable or not writable"),
                         (2, "refused: --yes missing on a mutating run")),
         ),
     }
@@ -55,18 +61,11 @@ except ImportError:  # pragma: no cover — old scitex-dev without help_spec
 
 
 @click.command("sync-stats", **_COMMAND_KWARGS)
-@click.option(
-    "--db",
-    "db_path",
-    type=click.Path(),
-    default=None,
-    help="Database path override (else use auto-discovery).",
-)
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Show the current cache/estimate state; write nothing.",
+    help="Show the current cache state; write nothing.",
 )
 @click.option(
     "-y",
@@ -74,33 +73,27 @@ except ImportError:  # pragma: no cover — old scitex-dev without help_spec
     is_flag=True,
     help="Required for a real run (non-interactive CLI contract).",
 )
-def sync_stats_cmd(db_path, as_json, dry_run, yes):
-    """Recompute exact table counts into the ``db_stats`` cache."""
+def sync_stats_cmd(as_json, dry_run, yes):
+    """Recompute exact counts into the ``crossref_corpus_stats`` cache."""
     import json as json_module
 
     from .._core.stats import refresh_stats
 
     if dry_run:
-        # Report the CURRENT state (cache or estimates) — no COUNT(*),
-        # no writes.
-        from .._core.db import Database
+        # Report the CURRENT state — cache only, no counting, no writes.
         from .._core.stats import get_counts
 
         try:
-            database = Database(db_path)
-        except FileNotFoundError as e:
+            counts = get_counts()
+        except Exception as e:
             click.secho(f"Error: {e}", fg="red", err=True)
             sys.exit(1)
-        try:
-            counts = get_counts(database)
-        finally:
-            database.close()
         if as_json:
             click.echo(json_module.dumps(counts, indent=2))
             return
         click.secho(
-            "[dry-run] would COUNT(*) works / works_fts / citations and "
-            "write db_stats; current state:",
+            "[dry-run] would count works / searchable / citations and "
+            "write crossref_corpus_stats; current state:",
             fg="yellow",
         )
         click.echo(f"  Works:       {counts['works']:,}")
@@ -111,7 +104,7 @@ def sync_stats_cmd(db_path, as_json, dry_run, yes):
 
     if not yes:
         click.secho(
-            "Refusing to recompute db_stats without --yes/-y "
+            "Refusing to recompute crossref_corpus_stats without --yes/-y "
             "(non-interactive CLI contract, audit §2). "
             "Re-run with -y/--yes, or preview with --dry-run.",
             fg="red",
@@ -121,14 +114,11 @@ def sync_stats_cmd(db_path, as_json, dry_run, yes):
 
     started = time.time()
     try:
-        counts = refresh_stats(db_path=db_path)
-    except FileNotFoundError as e:
-        click.secho(f"Error: {e}", fg="red", err=True)
-        sys.exit(1)
+        counts = refresh_stats()
     except Exception as e:
         click.secho(
             f"Error: could not refresh stats ({e}). "
-            "Is the database writable?",
+            "Is the store reachable and writable?",
             fg="red",
             err=True,
         )
@@ -139,7 +129,7 @@ def sync_stats_cmd(db_path, as_json, dry_run, yes):
         click.echo(json_module.dumps(counts, indent=2))
         return
 
-    click.secho("db_stats cache refreshed (exact counts):", fg="green")
+    click.secho("crossref_corpus_stats cache refreshed (exact counts):", fg="green")
     click.echo(f"  Works:       {counts['works']:,}")
     click.echo(f"  FTS indexed: {counts['fts_indexed']:,}")
     click.echo(f"  Citations:   {counts['citations']:,}")

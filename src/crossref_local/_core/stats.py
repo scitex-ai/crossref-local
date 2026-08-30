@@ -1,184 +1,230 @@
-"""Fast database statistics with an exact-count cache.
+"""Collection counts, with an exact-count cache.
 
-``COUNT(*)`` is prohibitively slow on the production database
-(measured 2026-07-22: ``works`` 167,008,748 rows -> 0.42 s;
-``works_fts`` -> 12.70 s because FTS5 virtual tables scan everything;
-``citations`` 1,788,599,072 rows -> 4.35 s; ~17.5 s total per
-``info()`` call). ``SELECT MAX(rowid)`` returns the same magnitude in
-~0.02 s.
+WHY THIS MODULE STILL EXISTS, AND WHAT CHANGED
+----------------------------------------------
+It was written because ``COUNT(*)`` was prohibitively slow on the corpus
+(measured 2026-07-22: ``works`` 167,008,748 rows -> 0.42 s; the full-text
+table -> 12.70 s; ``citations`` 1,788,599,072 rows -> 4.35 s; ~17.5 s per
+``info()`` call), and it kept the read path O(1) by falling back to a cheap
+``MAX(rowid)`` estimate.
 
-This module keeps ``info()`` O(1):
+**That estimator is gone and has no replacement.** It read a rowid-addressed
+file's allocation counter, which is a property of that file format rather
+than of counting, and nothing in a real database corresponds to it.
 
-- :func:`read_cached_counts` reads the ``db_stats`` cache table
-  (exact counts written by :func:`refresh_stats`).
-- :func:`estimate_counts` returns cheap ``MAX(rowid)`` estimates.
-- :func:`get_counts` is the read path: cache first, estimate
-  fallback — the result is ALWAYS labelled via ``counts_source``
-  (``"exact"`` or ``"estimated"``); an estimate is never silently
-  presented as exact, and the read path NEVER runs ``COUNT(*)``.
-- :func:`refresh_stats` computes exact ``COUNT(*)`` per table and
-  writes the cache. This is the ONLY function that writes; ``info()``
-  on a read-only database (no ``db_stats`` table) just estimates.
+What DOES exist is a real count: :meth:`scitex_dev.store.Store.count` takes
+a query and answers in the database. So the counters below no longer
+materialise a collection to measure it — the number crosses the connection
+and nothing else does. That removes the memory hazard entirely; counting
+167M works no longer means holding 167M rows in this process.
 
-Cache schema::
+It does not make counting FREE. A ``COUNT(*)`` over a corpus that size is
+still a scan inside the server, in the seconds, which is the same reason
+this module existed in the first place. So the split is unchanged:
 
-    CREATE TABLE db_stats (
-        table_name  TEXT PRIMARY KEY,
-        row_count   INTEGER,
-        computed_at TEXT
-    )
+- :func:`get_counts` — the read path — NEVER counts. It reads the cache, or
+  reports ``counts_source: "unavailable"``. A fallback here would put a
+  multi-second scan behind every ``info()`` call and every ``/health``
+  probe, which is exactly the cost the cache exists to avoid.
+- :func:`refresh_stats` — the write path — counts once and writes the cache.
+  Run it from the ingest pipeline or ``crossref-local sync-stats``.
+
+An estimate is never presented as exact, and an absent count is never
+presented as zero-the-number; ``counts_source`` always says which happened.
 """
 
-import sqlite3 as _sqlite3
+from __future__ import annotations
+
 from datetime import datetime as _datetime
 from datetime import timezone as _timezone
-from pathlib import Path as _Path
 from typing import Optional as _Optional
 
-from .config import Config as _Config
+from .store import (
+    CITATIONS,
+    WORKS,
+    citations_store,
+    corpus_stats_store,
+    works_store,
+)
 
 __all__ = [
-    "STATS_TABLES",
+    "STATS_COLLECTIONS",
+    "count_works",
+    "count_searchable",
+    "count_citations",
     "read_cached_counts",
-    "estimate_counts",
     "get_counts",
     "refresh_stats",
 ]
 
-# (sqlite table, public info() key) pairs — order defines output order.
-STATS_TABLES = (
+#: (cache key, public ``info()`` key) pairs — order defines output order.
+#:
+#: ``searchable`` replaces the old ``works_fts`` entry. There is no separate
+#: full-text collection any more: a work is searchable when it carries the
+#: text :mod:`crossref_local._core.fts` reads, so the number is a property
+#: of the works collection rather than of a second table that could drift
+#: out of sync with it.
+STATS_COLLECTIONS = (
     ("works", "works"),
-    ("works_fts", "fts_indexed"),
+    ("searchable", "fts_indexed"),
     ("citations", "citations"),
 )
 
 
-def read_cached_counts(db) -> _Optional[dict]:
-    """Read exact counts from the ``db_stats`` cache table.
+def count_works(store=None) -> int:
+    """Exact number of works. Counted in the database, not in this process."""
+    from scitex_dev.store import Query
+
+    store = store if store is not None else works_store()
+    return store.count(Query())
+
+
+def count_searchable(store=None) -> int:
+    """Exact number of works carrying searchable text.
+
+    A work with neither title, abstract nor author text cannot be returned
+    by any query, so counting it as indexed would overstate what search can
+    reach — precisely the drift the old separate index table made possible
+    and this collapses.
+
+    ``nonempty`` rather than "is not null": a record that stores an empty
+    title satisfies ``IS NOT NULL`` and is still unsearchable, so the
+    stricter test is the one that answers the question actually being asked.
+    """
+    from scitex_dev.store import Query, either, nonempty
+
+    store = store if store is not None else works_store()
+    return store.count(
+        Query().where(
+            either(nonempty("title"), nonempty("abstract"), nonempty("authors"))
+        )
+    )
+
+
+def count_citations(store=None) -> int:
+    """Exact number of citation edges. Counted in the database."""
+    from scitex_dev.store import Query
+
+    store = store if store is not None else citations_store()
+    return store.count(Query())
+
+
+_COUNTERS = {
+    "works": count_works,
+    "searchable": count_searchable,
+    "citations": count_citations,
+}
+
+
+def read_cached_counts(store=None) -> _Optional[dict]:
+    """Read exact counts from the cache collection.
 
     Args:
-        db: A :class:`crossref_local._core.db.Database` (or any object
-            with ``fetchall(query)``).
+        store: The corpus-stats store (opens this host's if not provided).
 
     Returns:
         ``{"works": n, "fts_indexed": n, "citations": n,
-        "counts_computed_at": <ISO timestamp>}`` when the cache covers
-        every tracked table, else ``None`` (absent table, unreadable
-        row, or partial coverage — the caller then estimates).
+        "counts_computed_at": <ISO timestamp>}`` when the cache covers every
+        tracked collection, else ``None`` — absent entry, unreadable value,
+        or partial coverage. The caller then reports the counts as
+        unavailable rather than filling the gap with a number it did not
+        measure.
     """
     try:
-        rows = db.fetchall(
-            "SELECT table_name, row_count, computed_at FROM db_stats"
-        )
+        store = store if store is not None else corpus_stats_store()
+        rows = store.rows()
     except Exception:
         return None
 
-    by_table = {row["table_name"]: row for row in rows}
-    if any(table not in by_table for table, _key in STATS_TABLES):
+    by_key = {str(row.values.get("collection")): row.values for row in rows}
+    if any(key not in by_key for key, _public in STATS_COLLECTIONS):
         return None
 
-    counts = {}
-    computed_stamps = []
-    for table, key in STATS_TABLES:
-        row = by_table[table]
-        row_count = row["row_count"]
-        if not isinstance(row_count, int):
+    counts: dict = {}
+    stamps = []
+    for key, public in STATS_COLLECTIONS:
+        values = by_key[key]
+        row_count = values.get("row_count")
+        if not isinstance(row_count, int) or isinstance(row_count, bool):
             return None
-        counts[key] = row_count
-        computed_stamps.append(row["computed_at"])
+        counts[public] = row_count
+        stamps.append(values.get("computed_at"))
 
     # Report the OLDEST stamp: the honest age of the least-fresh count.
-    counts["counts_computed_at"] = min(
-        (s for s in computed_stamps if s), default=None
-    )
+    counts["counts_computed_at"] = min((s for s in stamps if s), default=None)
     return counts
 
 
-def estimate_counts(db) -> dict:
-    """Cheap row-count estimates via ``MAX(rowid)`` (never ``COUNT(*)``).
+def get_counts(store=None) -> dict:
+    """Collection counts for ``info()`` — cache only, never a scan.
 
-    ``MAX(rowid)`` is O(1) on rowid tables and equals the row count for
-    append-only tables (rowids allocated sequentially, no deletes) —
-    which is how the ingest pipeline writes. A table that is absent or
-    unreadable reports 0, matching the previous ``info()`` behaviour.
+    ``counts_source`` is ``"exact"`` when the cache answered and
+    ``"unavailable"`` when it did not. There is deliberately no third,
+    cheaper path: the estimator that used to fill that role read a
+    file-format detail that no longer exists, and inventing a number here
+    would be worse than saying the count is not known.
     """
-    counts = {}
-    for table, key in STATS_TABLES:
-        try:
-            row = db.fetchone(f"SELECT MAX(rowid) AS n FROM {table}")
-            counts[key] = row["n"] if row and row["n"] is not None else 0
-        except Exception:
-            counts[key] = 0
-    counts["counts_computed_at"] = None
-    return counts
-
-
-def get_counts(db) -> dict:
-    """Fast, honestly-labelled table counts (the ``info()`` read path).
-
-    Reads the ``db_stats`` cache when present (``counts_source:
-    "exact"``); otherwise falls back to ``MAX(rowid)`` estimates
-    (``counts_source: "estimated"``). Never runs ``COUNT(*)`` and never
-    writes — safe on read-only databases.
-    """
-    cached = read_cached_counts(db)
+    cached = read_cached_counts(store)
     if cached is not None:
         cached["counts_source"] = "exact"
         return cached
-    estimated = estimate_counts(db)
-    estimated["counts_source"] = "estimated"
-    return estimated
+    return {
+        public: 0 for _key, public in STATS_COLLECTIONS
+    } | {
+        "counts_computed_at": None,
+        "counts_source": "unavailable",
+        "note": (
+            "No cached counts. Run `crossref-local sync-stats` to compute "
+            "them; the read path does not count, because counting means "
+            "reading every record."
+        ),
+    }
 
 
-def refresh_stats(db_path: _Optional[str | _Path] = None) -> dict:
-    """Compute exact ``COUNT(*)`` per table and write the cache.
+def refresh_stats(store=None) -> dict:
+    """Count every collection exactly and write the cache.
 
-    Slow by design (~17.5 s on the production database) — run it from
-    the ingest/update pipeline or ``crossref-local sync-stats``, not
-    from ``info()``. Requires write access (creates ``db_stats`` if
-    absent).
+    Slow by design — it reads each collection in full — so run it from the
+    ingest pipeline or ``crossref-local sync-stats``, never from ``info()``.
 
     Args:
-        db_path: Database path override; defaults to the configured DB.
+        store: The corpus-stats store (opens this host's if not provided).
 
     Returns:
         The freshly computed counts, same shape as :func:`get_counts`
         (``counts_source: "exact"``).
-
-    Raises:
-        sqlite3.OperationalError: If the database is not writable.
     """
-    path = _Path(db_path) if db_path else _Config.get_db_path()
+    from scitex_dev.store import ANY_REVISION
+
+    cache = store if store is not None else corpus_stats_store()
     computed_at = _datetime.now(_timezone.utc).isoformat(timespec="seconds")
 
-    conn = _sqlite3.connect(str(path))
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS db_stats ("
-            "table_name TEXT PRIMARY KEY, "
-            "row_count INTEGER, "
-            "computed_at TEXT)"
+    counts: dict = {}
+    for key, public in STATS_COLLECTIONS:
+        try:
+            n = _COUNTERS[key]()
+        except Exception:
+            # A collection that has never been written does not exist yet.
+            # Recording 0 keeps the same convention info() has always used
+            # for an absent table.
+            n = 0
+        cache.put(
+            {"collection": key, "row_count": n, "computed_at": computed_at},
+            # ANY_REVISION: this is a cache entry with a single logical
+            # writer per run and no lost-update hazard worth a retry loop —
+            # the value is recomputed from scratch each time, so an
+            # overwritten one loses nothing that cannot be recomputed.
+            expected_revision=ANY_REVISION,
         )
-        counts = {}
-        for table, key in STATS_TABLES:
-            try:
-                n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-            except _sqlite3.OperationalError:
-                # Table absent (e.g. minimal DB without citations):
-                # record 0 — same convention the old info() used.
-                n = 0
-            conn.execute(
-                "INSERT OR REPLACE INTO db_stats "
-                "(table_name, row_count, computed_at) VALUES (?, ?, ?)",
-                (table, n, computed_at),
-            )
-            counts[key] = n
-        conn.commit()
-    finally:
-        conn.close()
+        counts[public] = n
 
     counts["counts_computed_at"] = computed_at
     counts["counts_source"] = "exact"
     return counts
+
+
+# Names the schemas so a reader of this module can see what is counted
+# without opening the store module.
+_TRACKED_SCHEMAS = (WORKS, CITATIONS)
 
 # EOF

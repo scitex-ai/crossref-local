@@ -1,350 +1,368 @@
-"""Tests for crossref_local._core.stats (db_stats cache + estimates).
+"""Tests for crossref_local._core.stats (the exact-count cache).
 
-These tests build their own tiny SQLite databases, so they run without
-the shared fixture/production database (module is listed in
-``_DB_OPTIONAL_TEST_MODULES`` in ``tests/conftest.py``).
+Self-provisioning: every test seeds its own throwaway schema through the
+``store_env`` fixture, so none of them needs the production corpus and none
+of them can reach it.
+
+WHAT WAS DROPPED AND WHY. The old file had a second family of tests around
+a cheap row-id estimator — "counts_source is estimated", "MAX(rowid) still
+reports the old magnitude after a DELETE", "a read-only database file still
+estimates". That estimator read a file-format detail of an engine this
+package no longer has, and there is no replacement path: :func:`get_counts`
+now answers ``"exact"`` from the cache or ``"unavailable"``, full stop. A
+test asserting a third label would be asserting a behaviour the module
+deliberately refuses to have. The invariant those tests protected — the
+read path never counts and never writes — is kept, and is tested harder
+here than it was there.
 """
-
-import os
-import sqlite3
 
 import pytest
 
-from crossref_local._core.db import Database, close_db
+import crossref_local
 from crossref_local._core.config import Config
 from crossref_local._core.stats import (
-    estimate_counts,
+    STATS_COLLECTIONS,
+    count_citations,
+    count_searchable,
+    count_works,
     get_counts,
     read_cached_counts,
     refresh_stats,
 )
+from crossref_local._core.store import (
+    citations_store,
+    corpus_stats_store,
+    works_store,
+)
 
+#: Shape of the seeded corpus: 5 works, of which 3 carry searchable text.
 WORKS_ROWS = 5
-FTS_ROWS = 3
+SEARCHABLE_ROWS = 3
 CITATION_ROWS = 7
 
-
-@pytest.fixture
-def tmp_db(tmp_path):
-    """Create a small crossref-shaped SQLite DB (no db_stats table)."""
-    path = tmp_path / "mini_crossref.db"
-    conn = sqlite3.connect(str(path))
-    try:
-        conn.execute(
-            "CREATE TABLE works (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "doi VARCHAR(255), metadata BLOB)"
-        )
-        for i in range(WORKS_ROWS):
-            conn.execute(
-                "INSERT INTO works (doi, metadata) VALUES (?, ?)",
-                (f"10.1234/work{i}", "{}"),
-            )
-        conn.execute(
-            "CREATE VIRTUAL TABLE works_fts USING fts5(title, abstract)"
-        )
-        for i in range(FTS_ROWS):
-            conn.execute(
-                "INSERT INTO works_fts (title, abstract) VALUES (?, ?)",
-                (f"title {i}", f"abstract {i}"),
-            )
-        conn.execute(
-            "CREATE TABLE citations (citing_doi TEXT, cited_doi TEXT)"
-        )
-        for i in range(CITATION_ROWS):
-            conn.execute(
-                "INSERT INTO citations (citing_doi, cited_doi) VALUES (?, ?)",
-                (f"10.1234/work{i % WORKS_ROWS}", "10.1234/work0"),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-    yield path
+#: Distinct stamps planted on the three cache rows, oldest first.
+_STAMPS = (
+    "2020-01-01T00:00:00+00:00",
+    "2021-01-01T00:00:00+00:00",
+    "2022-01-01T00:00:00+00:00",
+)
 
 
 @pytest.fixture
-def db(tmp_db):
-    """Open the mini DB through the package's Database wrapper."""
-    database = Database(tmp_db)
-    yield database
-    database.close()
+def seeded(store_env):
+    """Seed the throwaway store with a countable corpus."""
+    from scitex_dev.store import NEW_RECORD
+
+    works = works_store()
+    for index in range(SEARCHABLE_ROWS):
+        works.put(
+            {"doi": f"10.1234/work{index}", "title": f"Title {index}"},
+            expected_revision=NEW_RECORD,
+        )
+    for index in range(SEARCHABLE_ROWS, WORKS_ROWS):
+        works.put({"doi": f"10.1234/work{index}"}, expected_revision=NEW_RECORD)
+
+    citations = citations_store()
+    for index in range(CITATION_ROWS):
+        citations.put(
+            {"citing_doi": f"10.1234/work{index}", "cited_doi": "10.1234/work0"},
+            expected_revision=NEW_RECORD,
+        )
+    return store_env
 
 
-@pytest.fixture
-def configured_info(tmp_db):
-    """Point the package-level info() at the mini DB; restore afterwards."""
-    import crossref_local
-
-    crossref_local.configure(str(tmp_db))
-    yield crossref_local.info
-    Config.reset()
-    close_db()
+# ---------- the counters ----------
 
 
-# ---------- estimate path (no cache) ----------
-
-
-def test_get_counts_without_cache_labels_source_estimated(db):
+def test_count_works_returns_the_exact_number_of_records(seeded):
     # Arrange
     # Act
-    counts = get_counts(db)
+    total = count_works()
     # Assert
-    assert counts["counts_source"] == "estimated"
+    assert total == WORKS_ROWS
 
 
-def test_get_counts_without_cache_reports_works_via_max_rowid(db):
-    # Arrange
+def test_count_searchable_excludes_works_with_no_text(seeded):
+    # Arrange — a work with neither title, abstract nor authors cannot be
+    # returned by any query, so counting it would overstate reach.
     # Act
-    counts = get_counts(db)
+    total = count_searchable()
     # Assert
-    assert counts["works"] == WORKS_ROWS
+    assert total == SEARCHABLE_ROWS
 
 
-def test_get_counts_without_cache_reports_fts_indexed(db):
+def test_count_citations_returns_the_exact_number_of_edges(seeded):
     # Arrange
     # Act
-    counts = get_counts(db)
+    total = count_citations()
     # Assert
-    assert counts["fts_indexed"] == FTS_ROWS
+    assert total == CITATION_ROWS
 
 
-def test_get_counts_without_cache_reports_citations(db):
+# ---------- read path: no cache ----------
+
+
+def test_read_cached_counts_returns_none_without_a_cache(seeded):
     # Arrange
     # Act
-    counts = get_counts(db)
-    # Assert
-    assert counts["citations"] == CITATION_ROWS
-
-
-def test_get_counts_without_cache_never_creates_db_stats_table(tmp_db, db):
-    # Arrange
-    # Act
-    get_counts(db)
-    # Assert — the read path must not write (read-only deployments)
-    conn = sqlite3.connect(str(tmp_db))
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' "
-        "AND name='db_stats'"
-    ).fetchone()
-    conn.close()
-    assert row is None
-
-
-def test_get_counts_on_readonly_db_file_still_estimates(tmp_db):
-    # Arrange
-    os.chmod(tmp_db, 0o444)
-    database = Database(tmp_db)
-    # Act
-    counts = get_counts(database)
-    # Assert
-    database.close()
-    os.chmod(tmp_db, 0o644)
-    assert counts["works"] == WORKS_ROWS
-
-
-def test_estimate_after_deletes_keeps_estimated_label(tmp_db, db):
-    # Arrange — deletes make MAX(rowid) diverge from COUNT(*), which is
-    # exactly why the label must say "estimated"
-    conn = sqlite3.connect(str(tmp_db))
-    conn.execute("DELETE FROM works WHERE id = 2")
-    conn.commit()
-    conn.close()
-    # Act
-    counts = estimate_counts(db)
-    # Assert — MAX(rowid) still reports the old magnitude
-    assert counts["works"] == WORKS_ROWS
-
-
-def test_read_cached_counts_returns_none_without_cache(db):
-    # Arrange
-    # Act
-    cached = read_cached_counts(db)
+    cached = read_cached_counts()
     # Assert
     assert cached is None
 
 
-def test_read_cached_counts_returns_none_on_partial_cache(tmp_db, db):
-    # Arrange — cache row for only ONE of the three tracked tables
-    conn = sqlite3.connect(str(tmp_db))
-    conn.execute(
-        "CREATE TABLE db_stats (table_name TEXT PRIMARY KEY, "
-        "row_count INTEGER, computed_at TEXT)"
+@pytest.fixture
+def partial_cache(seeded):
+    """Write a cache entry for ONE of the three tracked collections."""
+    from scitex_dev.store import NEW_RECORD
+
+    corpus_stats_store().put(
+        {"collection": "works", "row_count": WORKS_ROWS, "computed_at": _STAMPS[0]},
+        expected_revision=NEW_RECORD,
     )
-    conn.execute(
-        "INSERT INTO db_stats VALUES ('works', 5, '2026-07-22T00:00:00')"
-    )
-    conn.commit()
-    conn.close()
+    return seeded
+
+
+def test_read_cached_counts_returns_none_on_a_partial_cache(partial_cache):
+    # Arrange — partial coverage is not a usable answer; reporting the one
+    # collection it has and zero for the rest would be a fabricated number.
     # Act
-    cached = read_cached_counts(db)
-    # Assert — partial coverage falls back to estimates entirely
+    cached = read_cached_counts()
+    # Assert
     assert cached is None
 
 
-# ---------- refresh_stats() ----------
-
-
-def test_refresh_stats_creates_db_stats_table(tmp_db):
+def test_get_counts_labels_the_source_unavailable_without_a_cache(seeded):
     # Arrange
     # Act
-    refresh_stats(db_path=tmp_db)
+    counts = get_counts()
     # Assert
-    conn = sqlite3.connect(str(tmp_db))
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' "
-        "AND name='db_stats'"
-    ).fetchone()
-    conn.close()
-    assert row is not None
+    assert counts["counts_source"] == "unavailable"
 
 
-def test_refresh_stats_returns_exact_works_count(tmp_db):
+def test_get_counts_reports_no_timestamp_without_a_cache(seeded):
     # Arrange
     # Act
-    counts = refresh_stats(db_path=tmp_db)
+    counts = get_counts()
+    # Assert
+    assert counts["counts_computed_at"] is None
+
+
+def test_get_counts_explains_how_to_populate_the_cache(seeded):
+    # Arrange
+    # Act
+    counts = get_counts()
+    # Assert
+    assert "sync-stats" in counts["note"]
+
+
+@pytest.fixture
+def cache_rows_after_get_counts(seeded):
+    """Call the read path, then hand back the cache collection's records."""
+    get_counts()
+    return corpus_stats_store().rows()
+
+
+def test_get_counts_never_writes_to_the_cache_collection(cache_rows_after_get_counts):
+    # Arrange — the read path must not write: it runs on read-only replicas
+    # and on every ``info()`` / ``/health`` call.
+    # Act
+    written = cache_rows_after_get_counts
+    # Assert
+    assert written == []
+
+
+# ---------- write path: refresh_stats() ----------
+
+
+@pytest.fixture
+def refreshed(seeded):
+    """Run the write path once and return what it reported."""
+    return refresh_stats()
+
+
+def test_refresh_stats_reports_the_exact_works_count(refreshed):
+    # Arrange
+    # Act
+    # Assert
+    assert refreshed["works"] == WORKS_ROWS
+
+
+def test_refresh_stats_reports_the_exact_searchable_count(refreshed):
+    # Arrange
+    # Act
+    # Assert
+    assert refreshed["fts_indexed"] == SEARCHABLE_ROWS
+
+
+def test_refresh_stats_reports_the_exact_citation_count(refreshed):
+    # Arrange
+    # Act
+    # Assert
+    assert refreshed["citations"] == CITATION_ROWS
+
+
+def test_refresh_stats_labels_the_source_exact(refreshed):
+    # Arrange
+    # Act
+    # Assert
+    assert refreshed["counts_source"] == "exact"
+
+
+def test_refresh_stats_records_a_computed_at_timestamp(refreshed):
+    # Arrange
+    # Act
+    # Assert
+    assert refreshed["counts_computed_at"] is not None
+
+
+def test_refresh_stats_writes_one_cache_row_per_tracked_collection(refreshed):
+    # Arrange
+    # Act
+    rows = corpus_stats_store().rows()
+    # Assert
+    assert len(rows) == len(STATS_COLLECTIONS)
+
+
+def test_refresh_stats_reports_zero_for_an_empty_collection(store_env):
+    # Arrange — nothing seeded: an empty collection counts as zero, which is
+    # the convention info() has always used for an absent table.
+    # Act
+    counts = refresh_stats()
+    # Assert
+    assert counts["works"] == 0
+
+
+def test_refresh_stats_reflects_a_later_write_exactly(refreshed):
+    # Arrange
+    from scitex_dev.store import NEW_RECORD
+
+    works_store().put({"doi": "10.1234/extra"}, expected_revision=NEW_RECORD)
+    # Act
+    counts = refresh_stats()
+    # Assert
+    assert counts["works"] == WORKS_ROWS + 1
+
+
+# ---------- read path: with a cache ----------
+
+
+def test_get_counts_labels_the_source_exact_with_a_cache(refreshed):
+    # Arrange
+    # Act
+    counts = get_counts()
+    # Assert
+    assert counts["counts_source"] == "exact"
+
+
+def test_get_counts_reports_the_cached_works_count(refreshed):
+    # Arrange
+    # Act
+    counts = get_counts()
     # Assert
     assert counts["works"] == WORKS_ROWS
 
 
-def test_refresh_stats_returns_exact_fts_count(tmp_db):
-    # Arrange
-    # Act
-    counts = refresh_stats(db_path=tmp_db)
-    # Assert
-    assert counts["fts_indexed"] == FTS_ROWS
+@pytest.fixture
+def sentinel_cache(refreshed):
+    """Overwrite the cached works count with a value nothing could compute."""
+    from scitex_dev.store import ANY_REVISION
 
-
-def test_refresh_stats_returns_exact_citations_count(tmp_db):
-    # Arrange
-    # Act
-    counts = refresh_stats(db_path=tmp_db)
-    # Assert
-    assert counts["citations"] == CITATION_ROWS
-
-
-def test_refresh_stats_labels_source_exact(tmp_db):
-    # Arrange
-    # Act
-    counts = refresh_stats(db_path=tmp_db)
-    # Assert
-    assert counts["counts_source"] == "exact"
-
-
-def test_refresh_stats_records_computed_at_timestamp(tmp_db):
-    # Arrange
-    # Act
-    counts = refresh_stats(db_path=tmp_db)
-    # Assert
-    assert counts["counts_computed_at"] is not None
-
-
-def test_refresh_stats_reflects_deletes_exactly(tmp_db):
-    # Arrange
-    conn = sqlite3.connect(str(tmp_db))
-    conn.execute("DELETE FROM works WHERE id = 2")
-    conn.commit()
-    conn.close()
-    # Act
-    counts = refresh_stats(db_path=tmp_db)
-    # Assert — COUNT(*) sees the delete (MAX(rowid) would not)
-    assert counts["works"] == WORKS_ROWS - 1
-
-
-def test_refresh_stats_records_zero_for_missing_citations_table(tmp_path):
-    # Arrange — minimal DB without a citations table
-    path = tmp_path / "no_citations.db"
-    conn = sqlite3.connect(str(path))
-    conn.execute("CREATE TABLE works (id INTEGER PRIMARY KEY, doi TEXT)")
-    conn.execute("CREATE VIRTUAL TABLE works_fts USING fts5(title)")
-    conn.commit()
-    conn.close()
-    # Act
-    counts = refresh_stats(db_path=path)
-    # Assert
-    assert counts["citations"] == 0
-
-
-# ---------- cache read path ----------
-
-
-def test_get_counts_with_cache_labels_source_exact(tmp_db, db):
-    # Arrange
-    refresh_stats(db_path=tmp_db)
-    # Act
-    counts = get_counts(db)
-    # Assert
-    assert counts["counts_source"] == "exact"
-
-
-def test_get_counts_with_cache_returns_cached_values_not_recomputed(
-    tmp_db, db
-):
-    # Arrange — plant a sentinel value directly in the cache
-    refresh_stats(db_path=tmp_db)
-    conn = sqlite3.connect(str(tmp_db))
-    conn.execute(
-        "UPDATE db_stats SET row_count = 424242 WHERE table_name = 'works'"
+    corpus_stats_store().put(
+        {"collection": "works", "row_count": 424242, "computed_at": _STAMPS[1]},
+        expected_revision=ANY_REVISION,
     )
-    conn.commit()
-    conn.close()
+    return refreshed
+
+
+def test_get_counts_returns_the_cached_value_rather_than_recomputing(sentinel_cache):
+    # Arrange — 424242 is not the corpus size, so a number that came back
+    # unchanged proves the cache was READ, not re-derived.
     # Act
-    counts = get_counts(db)
-    # Assert — the cache is READ, never recomputed on this path
+    counts = get_counts()
+    # Assert
     assert counts["works"] == 424242
 
 
-def test_get_counts_with_cache_reports_computed_at(tmp_db, db):
-    # Arrange
-    refresh_stats(db_path=tmp_db)
+@pytest.fixture
+def staggered_cache(seeded):
+    """Plant the three cache rows with deliberately different stamps."""
+    from scitex_dev.store import NEW_RECORD
+
+    cache = corpus_stats_store()
+    for (key, _public), stamp in zip(STATS_COLLECTIONS, _STAMPS):
+        cache.put(
+            {"collection": key, "row_count": 1, "computed_at": stamp},
+            expected_revision=NEW_RECORD,
+        )
+    return seeded
+
+
+def test_counts_computed_at_reports_the_oldest_stamp(staggered_cache):
+    # Arrange — the honest age of the cache is that of its least-fresh entry.
     # Act
-    counts = get_counts(db)
+    counts = get_counts()
     # Assert
-    assert counts["counts_computed_at"] is not None
+    assert counts["counts_computed_at"] == _STAMPS[0]
 
 
-# ---------- info() end-to-end (DB mode) ----------
+# ---------- info() end to end ----------
 
 
-def test_info_without_cache_labels_counts_estimated(configured_info):
+@pytest.fixture
+def db_mode_info(seeded):
+    """``info()`` in db mode against the throwaway store."""
+    Config.reset()
+    Config.set_mode("db")
+    try:
+        yield crossref_local.info
+    finally:
+        Config.reset()
+
+
+def test_info_reports_the_store_it_would_read(db_mode_info):
     # Arrange
     # Act
-    result = configured_info()
+    result = db_mode_info()
     # Assert
-    assert result["counts_source"] == "estimated"
+    assert "store" in result
 
 
-def test_info_without_cache_reports_estimated_works(configured_info):
+def test_info_keeps_the_collection_count_keys(db_mode_info):
     # Arrange
+    expected = {"works", "fts_indexed", "citations", "mode", "status"}
     # Act
-    result = configured_info()
+    result = db_mode_info()
     # Assert
-    assert result["works"] == WORKS_ROWS
+    assert expected <= set(result)
 
 
-def test_info_keeps_backward_compatible_keys(configured_info):
+def test_info_labels_counts_unavailable_without_a_cache(db_mode_info):
     # Arrange
     # Act
-    result = configured_info()
+    result = db_mode_info()
     # Assert
-    assert {"works", "fts_indexed", "citations", "mode", "status",
-            "db_path"} <= set(result)
+    assert result["counts_source"] == "unavailable"
 
 
-def test_info_with_cache_labels_counts_exact(tmp_db, configured_info):
+@pytest.fixture
+def db_mode_info_with_cache(db_mode_info):
+    """``info()`` after the exact-count cache has been written."""
+    refresh_stats()
+    return db_mode_info
+
+
+def test_info_labels_counts_exact_once_the_cache_exists(db_mode_info_with_cache):
     # Arrange
-    refresh_stats(db_path=tmp_db)
-    close_db()  # drop the thread-local connection so the cache is seen
     # Act
-    result = configured_info()
+    result = db_mode_info_with_cache()
     # Assert
     assert result["counts_source"] == "exact"
 
 
-def test_info_with_cache_reports_exact_citations(tmp_db, configured_info):
+def test_info_reports_the_exact_citation_count_from_the_cache(db_mode_info_with_cache):
     # Arrange
-    refresh_stats(db_path=tmp_db)
-    close_db()
     # Act
-    result = configured_info()
+    result = db_mode_info_with_cache()
     # Assert
     assert result["citations"] == CITATION_ROWS
 

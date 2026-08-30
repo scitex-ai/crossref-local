@@ -6,9 +6,12 @@
 # Run:
 #   docker run -d \
 #     -p 8082:8082 \
-#     -v /path/to/crossref.db:/data/crossref.db:ro \
 #     --name crossref-mcp \
 #     crossref-mcp
+#
+#   The corpus is a store the server connects to, not a file, so there is no
+#   volume to mount. To point it at a store other than this host's, pass
+#   -e SCITEX_STORE_DSN=... at run time; do not bake one into the image.
 #
 # Test:
 #   curl http://localhost:8082/mcp
@@ -20,9 +23,6 @@ LABEL description="CrossRef Local MCP Server"
 
 # Install crossref-local with MCP support
 RUN pip install --no-cache-dir crossref-local[mcp]
-
-# Database path (mount at runtime)
-ENV CROSSREF_LOCAL_DB=/data/crossref.db
 
 # MCP server port
 EXPOSE 8082

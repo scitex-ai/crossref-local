@@ -3,11 +3,19 @@
 # Install CrossRef Local MCP server as systemd service
 #
 # Usage:
-#   ./scripts/deployment/mcp/install.sh [--user USER] [--db PATH] [--port PORT]
+#   ./scripts/deployment/mcp/install.sh [--user USER] [--port PORT]
 #
 # Environment:
-#   CROSSREF_LOCAL_DB - Database path (required if not specified)
-#   SUDO_PASSWORD     - For non-interactive sudo (optional)
+#   SUDO_PASSWORD - For non-interactive sudo (optional)
+#
+# The corpus lives in the fleet's shared store, so there is no data path to
+# point the service at any more. The server resolves its own store through
+# scitex_dev.store.host_store(), which reaches this host's store by default.
+#
+# To override that, put SCITEX_STORE_DSN in /etc/crossref-mcp.env (the unit
+# below reads it if present). This installer deliberately never reads, prints
+# or writes a DSN: a unit file under /etc/systemd/system is world-readable and
+# a DSN can carry a password.
 
 set -euo pipefail
 
@@ -18,7 +26,6 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 SERVICE_NAME="crossref-mcp"
 SERVICE_USER="${USER:-$(whoami)}"
 SERVICE_PORT="8082"
-DB_PATH="${CROSSREF_LOCAL_DB:-$PROJECT_ROOT/data/crossref.db}"
 
 # Colors
 RED='\033[0;31m'
@@ -38,14 +45,15 @@ Usage: $0 [OPTIONS]
 
 Options:
   --user USER    Service user (default: $SERVICE_USER)
-  --db PATH      Database path (default: \$CROSSREF_LOCAL_DB or data/crossref.db)
   --port PORT    MCP server port (default: 8082)
   --uninstall    Remove the service
   -h, --help     Show this help
 
 Example:
-  $0 --db /data/crossref.db --port 8082
+  $0 --port 8082
   $0 --uninstall
+
+Store override (optional): put SCITEX_STORE_DSN in /etc/crossref-mcp.env.
 
 After installation:
   make mcp-status   # Check service status
@@ -58,7 +66,6 @@ UNINSTALL=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --user) SERVICE_USER="$2"; shift 2 ;;
-        --db) DB_PATH="$2"; shift 2 ;;
         --port) SERVICE_PORT="$2"; shift 2 ;;
         --uninstall) UNINSTALL=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -89,27 +96,16 @@ if $UNINSTALL; then
     exit 0
 fi
 
-# Validate database
-if [[ ! -f "$DB_PATH" ]]; then
-    error "Database not found: $DB_PATH"
-    echo ""
-    echo "Set database path:"
-    echo "  export CROSSREF_LOCAL_DB=/path/to/crossref.db"
-    echo "  make mcp-install"
-    echo ""
-    echo "Or specify directly:"
-    echo "  make mcp-install DB=/path/to/crossref.db"
-    exit 1
-fi
-
-DB_PATH=$(realpath "$DB_PATH")
+# There is nothing to validate here any more. The installer used to refuse
+# unless a corpus FILE existed at $DB_PATH; the corpus is now a store the
+# server opens at request time, and pre-flighting it would mean opening a
+# connection this script has no business holding.
 
 echo "Installing CrossRef MCP Server"
 echo "=============================="
 echo ""
 echo "  Service:  $SERVICE_NAME"
 echo "  User:     $SERVICE_USER"
-echo "  Database: $DB_PATH"
 echo "  Port:     $SERVICE_PORT"
 echo "  Binary:   $CROSSREF_BIN"
 echo ""
@@ -131,7 +127,11 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_USER
 
-Environment=CROSSREF_LOCAL_DB=$DB_PATH
+# Optional store override. Absent, the server reaches this host's own store
+# via scitex_dev.store.host_store(). Kept in a separate file (mode 0600,
+# operator-owned) rather than inline, so no connection string is written into
+# a world-readable unit. The leading '-' makes the file optional.
+EnvironmentFile=-/etc/crossref-mcp.env
 ExecStart=$CROSSREF_BIN run-server-mcp -t http --host 0.0.0.0 --port $SERVICE_PORT
 
 Restart=always

@@ -10,8 +10,14 @@
 #   -q, --quiet   Minimal output (exit code only)
 #   -j, --json    Output status as JSON
 #
-# Environment:
-#   CROSSREF_LOCAL_DB    Path to database (default: ./data/crossref.db)
+# Reports whether the corpus store resolves, and what the MCP server is doing.
+#
+# The store is not probed here. `crossref-local status` already resolves it
+# through scitex_dev.store.host_store(), so this script asks the package and
+# reports the answer instead of reimplementing a connection check in shell —
+# a second implementation would be the one that drifts. No connection string
+# is read or printed anywhere below: a DSN can carry a password, and the
+# package deliberately reports a describe() name in its place.
 #
 # Examples:
 #   ./status.sh           # Full status report
@@ -25,7 +31,12 @@ set -euo pipefail
 # Argument parsing
 # -----------------------------------------------------------------------------
 show_help() {
-    sed -n '3,/^# ====/p' "$0" | head -n -1 | cut -c3-
+    # Print the banner-delimited header block above. The previous sed range
+    # stopped at the SECOND banner line, so --help printed only the title and
+    # never the options it was documenting.
+    awk '/^# ={5,}/ { n++; next }
+         n >= 3      { exit }
+         n >= 1      { sub(/^# ?/, ""); print }' "$0"
     exit 0
 }
 
@@ -58,142 +69,123 @@ done
 # -----------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DB_PATH="${CROSSREF_LOCAL_DB:-$PROJECT_ROOT/data/crossref.db}"
 
-# Track overall health
-HEALTH_OK=true
+# Prefer the project venv, so `make status` reports on the same install
+# `make test` runs against rather than on whatever is first on PATH.
+CLI=""
+if [ -x "$PROJECT_ROOT/.venv/bin/crossref-local" ]; then
+    CLI="$PROJECT_ROOT/.venv/bin/crossref-local"
+elif command -v crossref-local > /dev/null 2>&1; then
+    CLI="$(command -v crossref-local)"
+fi
+
+STORE_JSON=""
 
 # -----------------------------------------------------------------------------
 # Helper functions
 # -----------------------------------------------------------------------------
-check_database() {
-    if [ -f "$DB_PATH" ]; then
-        return 0
-    else
-        HEALTH_OK=false
-        return 1
-    fi
+probe_store() {
+    # Ask the package whether its store resolves. `status --json` exits
+    # non-zero and reports {"status": "error"} when it cannot reach the
+    # store, so the exit code is the whole answer.
+    [ -n "$CLI" ] || return 1
+    STORE_JSON="$("$CLI" status --json 2> /dev/null)" || return 1
+    [ -n "$STORE_JSON" ] || return 1
+    case "$STORE_JSON" in
+    *'"status": "error"'*) return 1 ;;
+    esac
+    return 0
 }
 
-get_db_size() {
-    if [ -f "$DB_PATH" ]; then
-        du -h "$DB_PATH" | cut -f1
-    else
-        echo "N/A"
-    fi
-}
-
-get_work_count() {
-    if [ -f "$DB_PATH" ]; then
-        sqlite3 "$DB_PATH" "SELECT stat FROM sqlite_stat1 WHERE tbl='works' LIMIT 1;" 2>/dev/null | cut -d' ' -f1 || echo "?"
-    else
-        echo "?"
-    fi
-}
-
-get_citation_count() {
-    if [ -f "$DB_PATH" ]; then
-        sqlite3 "$DB_PATH" "SELECT MAX(rowid) FROM citations;" 2>/dev/null || echo "?"
-    else
-        echo "?"
-    fi
+json_field() {
+    # Pull one scalar out of the payload above. The shape is fixed
+    # (json.dumps(indent=2) over a flat dict), not arbitrary JSON.
+    printf '%s\n' "$STORE_JSON" \
+        | grep -m1 "\"$1\"" \
+        | sed -e 's/^[^:]*:[[:space:]]*//' -e 's/,$//' -e 's/^"//' -e 's/"$//' \
+        || true
 }
 
 # -----------------------------------------------------------------------------
 # JSON output
 # -----------------------------------------------------------------------------
 if $JSON; then
-    DB_EXISTS=$(check_database && echo "true" || echo "false")
-    DB_SIZE=$(get_db_size)
-    WORKS=$(get_work_count)
-    CITATIONS=$(get_citation_count)
+    if probe_store; then
+        RESOLVES=true
+    else
+        RESOLVES=false
+    fi
 
-    cat <<EOF
+    cat << EOF
 {
-  "healthy": $([[ "$DB_EXISTS" == "true" ]] && echo "true" || echo "false"),
-  "database": {
-    "path": "$DB_PATH",
-    "exists": $DB_EXISTS,
-    "size": "$DB_SIZE"
+  "healthy": $RESOLVES,
+  "store": {
+    "resolves": $RESOLVES,
+    "cli": "${CLI:-}"
   },
-  "stats": {
-    "works": "$WORKS",
-    "citations": "$CITATIONS"
-  }
+  "info": ${STORE_JSON:-null}
 }
 EOF
-    if [[ "$DB_EXISTS" == "true" ]]; then exit 0; else exit 1; fi
+    if [ "$RESOLVES" = true ]; then exit 0; else exit 1; fi
 fi
 
 # -----------------------------------------------------------------------------
 # Quiet mode
 # -----------------------------------------------------------------------------
 if $QUIET; then
-    check_database
-    exit $?
+    if probe_store; then exit 0; else exit 1; fi
 fi
 
 # -----------------------------------------------------------------------------
 # Full status report
 # -----------------------------------------------------------------------------
+HEALTH_OK=true
+
 echo "╔════════════════════════════════════════════════════════════╗"
 echo "║           CROSSREF LOCAL - STATUS                         ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Database
-echo "=== Database ==="
-if check_database; then
-    echo "  ✓ Database: $DB_PATH"
-    echo "  Size: $(get_db_size)"
+# Corpus store
+echo "=== Corpus Store ==="
+if [ -z "$CLI" ]; then
+    HEALTH_OK=false
+    echo "  ✗ crossref-local not found"
+    echo "    Hint: run 'make install' (or activate the venv)"
+elif probe_store; then
+    echo "  ✓ crossref-local: $CLI"
+    echo "  ✓ Store: $(json_field store)"
 else
-    echo "  ✗ Database NOT FOUND: $DB_PATH"
-    echo "    Hint: Set CROSSREF_LOCAL_DB or check data symlink"
-fi
-echo ""
-
-# MCP Server
-echo "=== MCP Server ==="
-"$SCRIPT_DIR/deployment/mcp/status.sh" 2>/dev/null || echo "  (MCP status script not available)"
-
-# NFS Server
-echo "=== NFS Server ==="
-"$SCRIPT_DIR/nfs/check.sh" 2>/dev/null || echo "  (NFS check script not available)"
-echo ""
-
-# Running Processes
-echo "=== Running Processes ==="
-if pgrep -af "(rebuild_citations|build_fts|sqlite3.*crossref)" 2>/dev/null | head -5; then
-    :
-else
-    echo "  No database processes running"
-fi
-echo ""
-
-# Screen Sessions
-echo "=== Screen Sessions ==="
-if screen -ls 2>/dev/null | grep -E "(citations|fts|rebuild)"; then
-    :
-else
-    echo "  No relevant screen sessions"
+    HEALTH_OK=false
+    echo "  ✗ Store does NOT resolve"
+    echo "    Hint: check SCITEX_STORE_DSN, or that this host's store is up"
+    echo "    Detail: $CLI status"
 fi
 echo ""
 
 # Quick Stats
 echo "=== Quick Stats ==="
-if [ -f "$DB_PATH" ]; then
-    echo "  Works:     $(get_work_count)"
-    echo "  Citations: $(get_citation_count)"
+if [ -n "$STORE_JSON" ]; then
+    echo "  Works:      $(json_field works)"
+    echo "  Searchable: $(json_field fts_indexed)"
+    echo "  Citations:  $(json_field citations)"
+    echo "  Source:     $(json_field counts_source) (as of $(json_field counts_computed_at))"
+    echo "    Counts come from the cache collection, never from a scan."
+    echo "    Refresh with: crossref-local sync-stats"
 else
-    echo "  (database not available)"
+    echo "  (store not available)"
 fi
 echo ""
 
+# MCP Server
+echo "=== MCP Server ==="
+"$SCRIPT_DIR/deployment/mcp/status.sh" 2> /dev/null || echo "  (MCP status script not available)"
+
 # Help
 echo "Commands:"
-echo "  make db-info      - Database details"
-echo "  make mcp-status   - MCP server details"
-echo "  make nfs-status   - NFS server details"
+echo "  crossref-local status  - Store details and counts"
+echo "  crossref-local update-db - Ingest recent works into the store"
+echo "  make mcp-status        - MCP server details"
 
 # Exit with health status
 $HEALTH_OK && exit 0 || exit 1

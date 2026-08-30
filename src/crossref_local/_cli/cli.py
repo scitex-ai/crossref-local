@@ -102,7 +102,7 @@ def _print_recursive_help(ctx, param, value):
     else None,
     help="Show the version and exit.",
 )
-@click.option("--http", is_flag=True, help="Use HTTP API instead of direct database")
+@click.option("--http", is_flag=True, help="Use HTTP API instead of the local store")
 @click.option(
     "--api-url",
     envvar="CROSSREF_LOCAL_API_URL",
@@ -124,16 +124,16 @@ def _print_recursive_help(ctx, param, value):
 )
 @click.pass_context
 def cli(ctx, http: bool, api_url: str, as_json: bool):
-    """Local CrossRef database with 167M+ works and full-text search.
+    """Local CrossRef corpus with 167M+ works and full-text search.
 
-    Supports both direct database access (db mode) and HTTP API (http mode).
+    Supports both direct store access (db mode) and HTTP API (http mode).
 
     \b
     Configuration precedence:
       ./config.yaml -> $CROSSREF_LOCAL_CONFIG -> ~/.scitex/crossref-local/runtime/config.yaml -> defaults
 
     \b
-    DB mode (default if database found):
+    DB mode (default when a store resolves):
       crossref-local search "machine learning"
 
     \b
@@ -180,7 +180,7 @@ def show_status(as_json):
     import os
     import sys
 
-    from .._core.config import DEFAULT_API_URLS, DEFAULT_DB_PATHS
+    from .._core.config import Config, DEFAULT_API_URLS, store_available
 
     if as_json:
         try:
@@ -201,34 +201,35 @@ def show_status(as_json):
     click.echo("Environment Variables:")
     click.echo()
     env_vars = [
-        ("CROSSREF_LOCAL_DB", "Path to SQLite database file"),
+        (
+            "SCITEX_STORE_DSN",
+            "Connection string for the shared store (resolved by scitex-dev)",
+        ),
         ("CROSSREF_LOCAL_API_URL", "HTTP API URL (e.g., http://localhost:31291)"),
         ("CROSSREF_LOCAL_MODE", "Force mode: 'db', 'http', or 'auto'"),
         ("CROSSREF_LOCAL_HOST", "Host for relay server (default: 0.0.0.0)"),
         ("CROSSREF_LOCAL_PORT", "Port for relay server (default: 31291)"),
     ]
+    #: A DSN can carry a password, and this output gets pasted into bug
+    #: reports. Report that it is set; never what it says.
+    _REDACTED = {"SCITEX_STORE_DSN"}
     for var_name, description in env_vars:
         value = os.environ.get(var_name)
         if value:
-            stat = ""
-            if var_name == "CROSSREF_LOCAL_DB":
-                stat = " (OK)" if os.path.exists(value) else " (NOT FOUND)"
-            click.echo(f"  {var_name}={value}{stat}")
+            shown = "(set)" if var_name in _REDACTED else value
+            click.echo(f"  {var_name}={shown}")
         else:
             click.echo(f"  {var_name} (not set)")
         click.echo(f"      | {description}")
         click.echo()
 
-    # Local database locations
-    click.echo("Local Database Locations:")
-    db_found = None
-    for path in DEFAULT_DB_PATHS:
-        if path.exists():
-            click.echo(f"  [OK] {path}")
-            if db_found is None:
-                db_found = path
-        else:
-            click.echo(f"  [ ] {path}")
+    # Store — a credential-free description, never the DSN. Resolution
+    # only: this opens no connection, so `show-status` stays instant even
+    # when the store is unreachable.
+    click.echo("Store:")
+    store_found = store_available()
+    marker = "[OK]" if store_found else "[ ]"
+    click.echo(f"  {marker} {Config.describe_store()}")
     click.echo()
 
     # API health checks
@@ -254,7 +255,25 @@ def show_status(as_json):
             click.secho(f"    -> unreachable ({type(e).__name__})", fg="red")
     click.echo()
 
-    # Database info via /info endpoint
+    def _echo_counts(payload, works_key="works"):
+        """Print the three counts, or say they are not known.
+
+        ``counts_source`` of anything but ``"exact"`` means nothing has
+        measured the corpus. The counts are zero in that case, and
+        printing "Works: 0" would present a number nobody took as a
+        measurement — the one thing _core/stats.py refuses to do.
+        """
+        if payload.get("counts_source") != "exact":
+            click.secho(
+                "Counts: unavailable — run `crossref-local sync-stats --yes`",
+                fg="yellow",
+            )
+            return
+        click.echo(f"Works: {payload.get(works_key, 0):,}")
+        click.echo(f"FTS Indexed: {payload.get('fts_indexed', 0):,}")
+        click.echo(f"Citations: {payload.get('citations', 0):,}")
+
+    # Corpus info via /info endpoint
     if api_found:
         info_url = f"{api_found}/info"
         click.echo(f"  $ curl {info_url}")
@@ -264,28 +283,17 @@ def show_status(as_json):
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json_module.loads(resp.read().decode())
                 click.secho(f"    -> ok", fg="green")
-                click.echo(f"Works: {data.get('total_papers', 0):,}")
-                click.echo(f"FTS Indexed: {data.get('fts_indexed', 0):,}")
-                click.echo(f"Citations: {data.get('citations', 0):,}")
+                _echo_counts(data, works_key="total_papers")
         except Exception:
             click.secho(f"    -> timed out (server may need update)", fg="yellow")
             # Fallback to info() which uses health-first approach
             try:
-                status_info = info()
-                if "works" in status_info:
-                    click.echo(f"Works: {status_info['works']:,}")
-                if "fts_indexed" in status_info:
-                    click.echo(f"FTS Indexed: {status_info['fts_indexed']:,}")
-                if "citations" in status_info:
-                    click.echo(f"Citations: {status_info['citations']:,}")
+                _echo_counts(info())
             except Exception:
                 pass
-    elif db_found:
+    elif store_found:
         try:
-            status_info = info()
-            click.echo(f"Works: {status_info.get('works', 0):,}")
-            click.echo(f"FTS Indexed: {status_info.get('fts_indexed', 0):,}")
-            click.echo(f"Citations: {status_info.get('citations', 0):,}")
+            _echo_counts(info())
         except Exception as e:
             click.secho(f"Error: {e}", fg="red", err=True)
 
@@ -332,11 +340,11 @@ register_deprecated_aliases(cli)
     help="Show what would be started without starting",
 )
 def relay(host: str, port: int, force: bool, dry_run: bool):
-    """Run HTTP relay server for remote database access.
+    """Run HTTP relay server for remote corpus access.
 
     \b
-    This runs a FastAPI server that provides proper full-text search
-    using FTS5 index across all 167M+ papers.
+    This runs a FastAPI server that provides full-text search across all
+    167M+ papers for hosts with no store of their own.
 
     \b
     Example:

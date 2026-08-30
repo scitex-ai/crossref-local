@@ -51,8 +51,8 @@
 <li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -98,7 +98,7 @@
 <li class="toctree-l2"><a class="reference internal" href="http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -111,7 +111,7 @@
 <li class="toctree-l3"><a class="reference internal" href="http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -124,12 +124,14 @@
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="api/crossref_local.html#data-classes">Data Classes</a><ul>

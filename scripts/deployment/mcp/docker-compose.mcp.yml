@@ -1,26 +1,28 @@
 # Docker Compose for CrossRef Local MCP Server
 #
 # Usage:
-#   cd examples
+#   cd scripts/deployment/mcp
 #   docker-compose -f docker-compose.mcp.yml up -d
 #
 # Configuration:
-#   Edit the volume path to point to your crossref.db file
+#   None required. The corpus is a store the server connects to, not a file,
+#   so there is no volume to mount. To point the server at a store other than
+#   this host's, export SCITEX_STORE_DSN before `up` and it is forwarded
+#   below. Never write a DSN into this file — it can carry a password and
+#   this file is committed.
 
 services:
   crossref-mcp:
     build:
-      context: ..
-      dockerfile: examples/Dockerfile.mcp
+      context: ../../..
+      dockerfile: scripts/deployment/mcp/Dockerfile.mcp
     image: crossref-mcp:latest
     container_name: crossref-mcp
     ports:
       - "8082:8082"
-    volumes:
-      # Mount your database file (read-only)
-      - /path/to/crossref.db:/data/crossref.db:ro
     environment:
-      - CROSSREF_LOCAL_DB=/data/crossref.db
+      # Forwarded from the invoking shell; unset means "this host's store".
+      - SCITEX_STORE_DSN
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/mcp"]
@@ -37,8 +39,6 @@ services:
 #             crossref-local run-server-mcp -t http --host 0.0.0.0 --port 8082"
 #    ports:
 #      - "8082:8082"
-#    volumes:
-#      - /path/to/crossref.db:/data/crossref.db:ro
 #    environment:
-#      - CROSSREF_LOCAL_DB=/data/crossref.db
+#      - SCITEX_STORE_DSN
 #    restart: unless-stopped

@@ -1,22 +1,22 @@
 """Main API for crossref_local.
 
 Supports two modes:
-- db: Direct database access (requires database file)
+- db: Direct access to this host's shared store
 - http: HTTP API access (requires API server)
 
 Mode is auto-detected or can be set explicitly via:
 - CROSSREF_LOCAL_MODE environment variable ("db" or "http")
 - CROSSREF_LOCAL_API_URL environment variable (API URL)
-- configure() or configure_http() functions
+- configure_http() function
 """
 
 from typing import List, Optional
 
 from . import fts, stats
 from .config import Config
-from .db import close_db, get_db
 from .models import SearchResult, Work
 from .stats import refresh_stats
+from .store import close_stores, works_store
 
 __all__ = [
     "search",
@@ -24,7 +24,7 @@ __all__ = [
     "get",
     "get_many",
     "exists",
-    "configure",
+    "close_stores",
     "configure_http",
     "configure_remote",
     "enrich",
@@ -37,6 +37,22 @@ __all__ = [
     "SearchResult",
     "Config",
 ]
+
+
+def _work_from_row(row) -> Optional[Work]:
+    """Build a :class:`Work` from a store row, or ``None`` for a miss.
+
+    ``metadata`` is a declared JSON field, so the primitive returns it as a
+    ``dict``. Nothing decompresses or re-parses it here — the previous
+    zlib-or-plain-text ambiguity (two modules disagreed about which
+    ``works.metadata`` held) cannot recur, because the schema decides.
+    """
+    if row is None:
+        return None
+    metadata = row.values.get("metadata")
+    if not metadata:
+        return None
+    return Work.from_metadata(str(row.values.get("doi")), metadata)
 
 
 def _get_http_client():
@@ -55,10 +71,13 @@ def search(
     """
     Full-text search across works.
 
-    Uses FTS5 index for fast searching across titles, abstracts, and authors.
+    Matches across titles, abstracts and authors. NOT indexed: the store
+    primitive offers no text-search surface, so each query scans the works
+    collection — correct at any size, and fast only at small ones. See
+    ``docs/adr/0001-corpus-moves-to-the-shared-store.md``.
 
     Args:
-        query: Search query (supports FTS5 syntax)
+        query: Search query (quoted phrases, ``AND`` / ``OR`` / ``NOT``)
         limit: Maximum results to return
         offset: Skip first N results (for pagination)
         with_if: Include impact factor data (OpenAlex)
@@ -82,7 +101,7 @@ def count(query: str) -> int:
     Count matching works without fetching results.
 
     Args:
-        query: FTS5 search query
+        query: Search query, same grammar as :func:`search`
 
     Returns:
         Number of matching works
@@ -112,11 +131,7 @@ def get(doi: str) -> Optional[Work]:
     if Config.get_mode() == "http":
         client = _get_http_client()
         return client.get(doi)
-    db = get_db()
-    metadata = db.get_metadata(doi)
-    if metadata:
-        return Work.from_metadata(doi, metadata)
-    return None
+    return _work_from_row(works_store().get({"doi": doi}))
 
 
 def get_many(dois: List[str]) -> List[Work]:
@@ -132,12 +147,15 @@ def get_many(dois: List[str]) -> List[Work]:
     if Config.get_mode() == "http":
         client = _get_http_client()
         return client.get_many(dois)
-    db = get_db()
+    # One point lookup per DOI. The store has no batch read and no `IN`
+    # predicate, so this is N round trips rather than one — the same shape
+    # the previous implementation had, at a higher per-row cost.
+    store = works_store()
     works = []
     for doi in dois:
-        metadata = db.get_metadata(doi)
-        if metadata:
-            works.append(Work.from_metadata(doi, metadata))
+        work = _work_from_row(store.get({"doi": doi}))
+        if work:
+            works.append(work)
     return works
 
 
@@ -154,24 +172,7 @@ def exists(doi: str) -> bool:
     if Config.get_mode() == "http":
         client = _get_http_client()
         return client.exists(doi)
-    db = get_db()
-    row = db.fetchone("SELECT 1 FROM works WHERE doi = ?", (doi,))
-    return row is not None
-
-
-def configure(db_path: str) -> None:
-    """
-    Configure for local database access.
-
-    Args:
-        db_path: Path to CrossRef SQLite database
-
-    Example:
-        >>> from crossref_local import configure
-        >>> configure("/path/to/crossref.db")
-    """
-    Config.set_db_path(db_path)
-    close_db()  # Reset singleton to use new path
+    return works_store().get({"doi": doi}) is not None
 
 
 def configure_http(api_url: str = "http://localhost:8333") -> None:
@@ -280,11 +281,11 @@ def info() -> dict:
     """
     Get database/API information.
 
-    Fast by design: counts come from the ``db_stats`` cache (exact,
-    written by :func:`refresh_stats`) or from ``MAX(rowid)`` estimates
-    when the cache is absent — never from ``COUNT(*)`` full scans
-    (~17.5 s on the production database). The ``counts_source`` field
-    labels which path produced the numbers (``"exact"`` /
+    Fast by design: counts come from the cache collection (exact, written
+    by :func:`refresh_stats`) and from nowhere else. When the cache is
+    absent the counts are reported as ``"unavailable"`` rather than
+    measured, because measuring means reading every record. The
+    ``counts_source`` field always labels which happened (``"exact"`` /
     ``"estimated"`` / ``"unavailable"``).
 
     Returns:
@@ -308,7 +309,7 @@ def info() -> dict:
             "mode": "http",
             "status": "ok" if health.get("status") == "healthy" else "degraded",
             "api_url": client.base_url,
-            "db_path": health.get("database_path", "unknown"),
+            "store": health.get("store", "unknown"),
         }
         # Try /info with short timeout for counts
         old_timeout = client.timeout
@@ -337,15 +338,14 @@ def info() -> dict:
             client.timeout = old_timeout
         return result
 
-    db = get_db()
-
-    # Cache-first counts (exact when db_stats is present, MAX(rowid)
-    # estimates otherwise). NEVER COUNT(*) — see _core/stats.py.
-    counts = stats.get_counts(db)
+    # Cache-only counts. NEVER a scan on the read path — see _core/stats.py.
+    counts = stats.get_counts()
 
     return {
         "mode": "db",
         "status": "ok",
-        "db_path": str(Config.get_db_path()),
+        "store": Config.describe_store(),
         **counts,
     }
+
+# EOF

@@ -20,8 +20,12 @@ Type=simple
 User=ywatanabe
 Group=ywatanabe
 
-# Environment - adjust path to your database
-Environment=CROSSREF_LOCAL_DB=/home/ywatanabe/proj/crossref-local/data/crossref.db
+# Store: the server resolves its own via scitex_dev.store.host_store(), which
+# reaches this host's store by default. To point it elsewhere, put
+# SCITEX_STORE_DSN in /etc/crossref-mcp.env (mode 0600) — never inline here,
+# because a unit under /etc/systemd/system is world-readable and a DSN can
+# carry a password. The leading '-' makes the file optional.
+EnvironmentFile=-/etc/crossref-mcp.env
 
 # Run MCP server with HTTP transport (recommended over SSE)
 # SSE is deprecated as of MCP spec 2025-03-26

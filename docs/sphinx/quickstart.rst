@@ -106,7 +106,8 @@ MCP Server
 Environment Variables
 ---------------------
 
-- ``CROSSREF_LOCAL_DB``: Path to SQLite database
+- ``SCITEX_STORE_DSN``: Connection string for the shared store, resolved by
+  :func:`scitex_dev.store.host_store` (default: this host's own store)
 - ``CROSSREF_LOCAL_API_URL``: HTTP API URL for remote access
 - ``CROSSREF_LOCAL_MODE``: Force mode (``db`` or ``http``)
 - ``CROSSREF_LOCAL_HOST``: Host for relay server (default: 0.0.0.0)

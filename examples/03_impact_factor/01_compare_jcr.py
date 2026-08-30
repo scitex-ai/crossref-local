@@ -16,21 +16,21 @@ Usage:
     python 01_compare_jcr.py --category all
 """
 
-import argparse
 import csv
 import json
-import sys
 from pathlib import Path
 
 import pandas as pd
+import scitex as stx
 
-# Add impact_factor to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "impact_factor"))
-from src.calculator import ImpactFactorCalculator
+# The calculator ships with the package. It used to be imported from a
+# sibling `impact_factor/` checkout via sys.path and constructed with a
+# corpus file path; it now opens this thread's store itself, so there is
+# neither a path to pass nor a directory to reach into.
+from crossref_local._impact_factor import ImpactFactorCalculator
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DB_PATH = PROJECT_ROOT / "data" / "crossref.db"
 jcr_PATH = PROJECT_ROOT / "GITIGNORED" / "jcr_impact_factor_2024.xlsx"
 OUTPUT_DIR = Path(__file__.replace(".py", "_out"))
 
@@ -101,9 +101,11 @@ def calculate_coverage(calc, issn):
     dois += calc.get_article_dois(issn, 2022, use_issn=True, citable_only=True)
     if not dois:
         return 0.0
-    cites_table = calc._count_citations_from_table(dois, 2023)
-    cites_cumul = calc._count_citations_simple(dois, 2023)
-    return (cites_table / cites_cumul * 100) if cites_cumul > 0 else 0.0
+    # Public API rather than the private counters: the year-specific edge
+    # count over the cumulative referenced-by count.
+    cites_edges = calc.get_citations_to_articles(dois, 2023, method="citations-table")
+    cites_cumul = calc.get_citations_to_articles(dois, 2023, method="is-referenced-by")
+    return (cites_edges / cites_cumul * 100) if cites_cumul > 0 else 0.0
 
 
 def compare_journals(journals, calc, jcr_df, target_year=2023):
@@ -238,46 +240,48 @@ def print_summary(results, category):
     print()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Compare IF with JCR")
-    parser.add_argument(
-        "--category",
-        choices=list(JOURNALS.keys()) + ["all"],
-        default="neuroscience",
-        help="Journal category to test",
-    )
-    parser.add_argument(
-        "--year", type=int, default=2023, help="Target year for IF calculation"
-    )
-    args = parser.parse_args()
+@stx.session
+def main(
+    category: str = "neuroscience",
+    year: int = 2023,
+    CONFIG=stx.session.INJECTED,
+    logger=stx.session.INJECTED,
+):
+    """Compare calculated impact factors with JCR official values.
 
+    Args:
+        category: One of the JOURNALS keys, or "all"
+        year: Target year for the IF calculation
+    """
     # Setup
     OUTPUT_DIR.mkdir(exist_ok=True)
     jcr_df = load_jcr_data()
-    calc = ImpactFactorCalculator(str(DB_PATH))
+    # No path argument: the calculator opens this thread's store itself.
+    calc = ImpactFactorCalculator()
 
     # Determine categories to process
-    if args.category == "all":
+    if category == "all":
         categories = list(JOURNALS.keys())
     else:
-        categories = [args.category]
+        categories = [category]
 
     # Process each category
     all_results = []
-    for category in categories:
-        journals = JOURNALS[category]
-        results = compare_journals(journals, calc, jcr_df, args.year)
+    for name in categories:
+        journals = JOURNALS[name]
+        results = compare_journals(journals, calc, jcr_df, year)
         all_results.extend(results)
 
-        print_summary(results, category)
-        save_results(results, category, OUTPUT_DIR)
+        print_summary(results, name)
+        save_results(results, name, OUTPUT_DIR)
 
     # Save combined results if multiple categories
     if len(categories) > 1:
         save_results(all_results, "all_combined", OUTPUT_DIR)
 
     calc.close()
-    print(f"\nResults saved to: {OUTPUT_DIR}/")
+    logger.info(f"Results saved to: {OUTPUT_DIR}/")
+    return 0
 
 
 if __name__ == "__main__":

@@ -104,11 +104,56 @@ echo "10.1038/nature12373" | crossref-local check
 crossref-local status [--json]
 ```
 
-Shows environment variables, database locations, API health, and counts.
+Alias for `show-status`. Shows environment variables, the resolved store,
+API health, and the cached corpus counts.
+
+### `update-db`
+
+Incrementally fill and refresh the corpus from the CrossRef REST API. This
+replaces the retired bulk-build pipeline: there is no dump to download and
+nothing to build, so this is both the initial population and the ongoing
+update.
+
+```
+crossref-local update-db [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--since YYYY-MM-DD` | Override start date (default: last recorded sync) |
+| `--dry-run` | Preview only — no API calls that write, no store changes |
+| `-y`, `--yes` | **Required** for a real run (non-interactive contract) |
+| `--quiet` | Minimal stdout, for cron |
+
+```bash
+crossref-local update-db --yes                      # since last sync
+crossref-local update-db --yes --since 2026-03-01   # explicit start date
+crossref-local update-db --dry-run                  # preview, no writes
+crossref-local update-db --yes --quiet              # cron / unattended
+```
+
+Exit codes: `0` success, `1` update failed, `2` refused (`--yes` missing on
+a mutating run). `update` is a deprecated alias for this command.
+
+Point `CROSSREF_LOCAL_UPDATE_FEED` at a local JSON feed file to drive the
+same code path with no network (CI, air-gapped hosts).
+
+### `sync-stats`
+
+Count every collection exactly and write the count cache that `status` and
+`info()` read. Slow by design — it reads each collection in full — so run it
+from the ingest pipeline or on a schedule, never in a hot path.
+
+```bash
+crossref-local sync-stats
+```
+
+Without it, `info()` reports `counts_source: "unavailable"` rather than a
+number nobody measured. `refresh-stats` is a deprecated alias.
 
 ### `relay`
 
-Run an HTTP relay server exposing the SQLite DB over REST.
+Run an HTTP relay server exposing this host's shared store over REST.
 
 ```
 crossref-local relay [OPTIONS]
@@ -136,7 +181,7 @@ MCP server subcommands. See [11_mcp.md](11_mcp.md).
 ```bash
 crossref-local mcp start              # stdio (Claude Desktop)
 crossref-local mcp start -t http      # HTTP transport
-crossref-local mcp doctor             # diagnose setup
+crossref-local mcp doctor             # diagnose dependencies + store
 crossref-local mcp installation       # show client config
 crossref-local mcp list-tools         # list MCP tools
 crossref-local mcp list-tools -vvv    # with full docs

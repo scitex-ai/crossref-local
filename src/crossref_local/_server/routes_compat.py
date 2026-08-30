@@ -5,7 +5,14 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 
 from .._core import fts
-from .._core.db import get_db
+from .._core.stats import get_counts
+from .._core.store import (
+    CITATIONS,
+    CORPUS_STATS,
+    JOURNALS,
+    SYNC_STATE,
+    WORKS,
+)
 from .models import WorkResponse
 from .routes_works import get_work
 
@@ -71,31 +78,45 @@ def api_search_compat(
     }
 
 
+#: The collections this package declares. ``tables`` used to be read back
+#: from the engine's own catalog, which answered with whatever physically
+#: existed. The store primitive exposes no catalog, so this is the
+#: declaration instead of an observation: it says what this package
+#: defines, not what the server happens to hold.
+_COLLECTION_NAMES = [
+    schema.name for schema in (WORKS, CITATIONS, JOURNALS, CORPUS_STATS, SYNC_STATE)
+]
+
+
 @router.get("/stats/")
 def api_stats_compat():
-    """Backwards-compatible stats endpoint."""
-    db = get_db()
+    """Backwards-compatible stats endpoint.
 
-    row = db.fetchone("SELECT MAX(rowid) as count FROM works")
-    work_count = row["count"] if row else 0
+    Two fields changed meaning and cannot be restored:
 
-    # Get table names
-    tables = []
-    for row in db.fetchall("SELECT name FROM sqlite_master WHERE type='table'"):
-        tables.append(row["name"])
+    * ``tables`` is now the list of collections this package DECLARES,
+      not a catalog read. Nothing can enumerate what a store physically
+      holds.
+    * ``indices`` is always empty. Indexing is a per-field policy on a
+      schema, not a named object with a listable name, so there is no
+      honest value to put here. The key is kept so existing clients do
+      not fail on its absence.
 
-    # Get index names
-    indices = []
-    for row in db.fetchall("SELECT name FROM sqlite_master WHERE type='index'"):
-        if row["name"]:
-            indices.append(row["name"])
+    Counts come from the exact-count cache and are ``None`` when that
+    cache has not been written — never a scan, and never a zero standing
+    in for a number nobody measured. ``counts_source`` says which.
+    """
+    counts = get_counts()
+    exact = counts.get("counts_source") == "exact"
 
     return {
-        "total_papers": work_count,
+        "total_papers": counts["works"] if exact else None,
         "database_size_mb": None,
         "year_range": None,
         "total_journals": 0,
-        "total_citations": None,
-        "tables": tables,
-        "indices": indices,
+        "total_citations": counts["citations"] if exact else None,
+        "counts_source": counts.get("counts_source"),
+        "counts_computed_at": counts.get("counts_computed_at"),
+        "tables": list(_COLLECTION_NAMES),
+        "indices": [],
     }

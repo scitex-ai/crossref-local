@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-30
+
+The corpus moves off the embedded file-backed database engine and into the
+fleet's shared store primitive (`scitex_dev.store`). See
+`docs/adr/0001-corpus-moves-to-the-shared-store.md` for the decision, the
+collection mapping, and — in full — the performance this costs and why it
+is taken deliberately.
+
+### Removed
+- The per-package database layer `_core/db.py`, and with it `Database`,
+  `get_db()`, `close_db()` and `connection()`. Consumers now hold a
+  `scitex_dev.store.Store` and use the primitive directly; there is no
+  replacement wrapper, by design.
+- `crossref_local.configure(db_path)` — there is no database path to
+  configure. `configure_http()` / `configure_remote()` are unchanged.
+- `Config.get_db_path()`, `Config.set_db_path()`, `DEFAULT_DB_PATHS` and the
+  module-level `get_db_path()`.
+- The `CROSSREF_LOCAL_DB` and `SCITEX_SCHOLAR_CROSSREF_DB` environment
+  variables. The store connection is resolved by
+  `scitex_dev.store.host_store()`, which reads `SCITEX_STORE_DSN`.
+- The multi-day bulk build pipeline under `scripts/database/`, and
+  `scripts/create_test_db.py`. They produced an artifact that no longer
+  exists.
+- The `tables` and `indices` arrays from the `/api/stats/` response. They
+  were read out of the old engine's system catalog and have no equivalent.
+
+### Added
+- `_core/store.py` — the `Schema` declarations for the five collections
+  (`crossref_works`, `crossref_citations`, `crossref_journals`,
+  `crossref_corpus_stats`, `crossref_sync_state`) and the openers that hand
+  out a bare `Store`.
+- `_core/ingest.py` — the differential updater, previously a script loaded
+  by file path that reached into `vendor/` for a row model. It is now an
+  ordinary module behind `crossref-local update-db`.
+- `Config.describe_store()` and `store_available()`.
+- `docs/adr/` and ADR-0001.
+
+### Changed
+- **`scitex-dev` is now a hard dependency pinned at `>=0.57.0`** (was
+  `>=0.11.5`), the release with one storage engine and the ephemeral-store
+  test helpers.
+- Searchable text (`title` / `abstract` / `authors`) is written onto the
+  work record in the same upsert as the record itself, so a work can no
+  longer be present but unsearchable because a second index write was
+  skipped.
+- `info()` reports a credential-free `store` description in place of
+  `db_path`. Its `counts_source` is now `"exact"` or `"unavailable"`: the
+  cheap row-count estimate was a property of the old file format and has no
+  replacement, so an unmeasured count is reported as unknown rather than
+  guessed.
+- `refresh_stats()` no longer takes a path argument; `update()` no longer
+  takes `db_path`; the citation and search functions take `store=` where
+  they took `db=`.
+- Full-text search is evaluated in Python over the works collection. The
+  store primitive has no text-search, filtered-read or aggregate surface,
+  so this is a full scan and a real regression at corpus scale. ADR-0001
+  records it as a gap in the primitive rather than a local problem.
+
 ## [0.8.1] - 2026-07-22
 
 Release note: the v0.8.0 tag exists but was NEVER published to PyPI —
@@ -116,7 +174,11 @@ PyPI still had 0.7.6). 0.8.1 carries the audit fixes and ships the
 - Improved module docstrings with full API documentation
 
 ### Fixed
-- SQLite threading issue for FastAPI multi-threaded access
+- Database threading issue under multi-threaded FastAPI access — the
+  connection was shared across worker threads by a driver that could not
+  be. (The engine named in the original wording is recorded in
+  `docs/adr/0001-corpus-moves-to-the-shared-store.md`, which is the one
+  place a retired engine may still be named.)
 - Batch endpoint path in remote client
 - FastMCP API compatibility (`description` → `instructions`)
 

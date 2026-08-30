@@ -206,10 +206,11 @@ def mcp_installation(as_json: bool):
         payload = {
             "stdio": {
                 "mcpServers": {
+                    # No env block: the corpus store is resolved by
+                    # scitex-dev (SCITEX_STORE_DSN, else this host's own).
                     "crossref-local": {
                         "command": "crossref-local",
                         "args": ["mcp", "start"],
-                        "env": {"CROSSREF_LOCAL_DB": "/path/to/crossref.db"},
                     }
                 }
             },
@@ -237,13 +238,13 @@ def mcp_installation(as_json: bool):
     click.echo('     "mcpServers": {')
     click.echo('       "crossref-local": {')
     click.echo('         "command": "crossref-local",')
-    click.echo('         "args": ["mcp", "start"],')
-    click.echo('         "env": {')
-    click.echo('           "CROSSREF_LOCAL_DB": "/path/to/crossref.db"')
-    click.echo("         }")
+    click.echo('         "args": ["mcp", "start"]')
     click.echo("       }")
     click.echo("     }")
     click.echo("   }")
+    click.echo()
+    click.echo("   No env block is needed: the corpus store is resolved by")
+    click.echo("   scitex-dev (SCITEX_STORE_DSN, else this host's own).")
     click.echo()
     click.echo("2. Remote (HTTP) - Persistent server:")
     click.echo()
