@@ -115,6 +115,19 @@ _STORE_OPTIONAL_TEST_MODULES = frozenset(
 
 # Set in `pytest_configure`; consumed by `pytest_collection_modifyitems`.
 _DB_AVAILABLE = False
+_STORE_UNAVAILABLE = False
+
+#: Set once, by `pytest_configure`, when NO writable PostgreSQL could be
+#: provisioned for this session. `store_env` consults it instead of probing
+#: again per test.
+#:
+#: WHY THIS EXISTS. Widening the exception below stopped a `pg_ctl` hang from
+#: killing the run, but left every `store_env` test to rediscover the same
+#: hang for itself. There are 36 of them and the timeout is 120s, so the
+#: suite went from crashing in two minutes to grinding for over an hour —
+#: still reported as "in progress", which is the failure mode that looks
+#: like patience. The probe's ANSWER is a property of the session, not of
+#: each test, so it is taken once.
 
 #: Holds the session's writable-DSN and ephemeral-schema contexts open for
 #: the whole run; unwound in `pytest_unconfigure`.
@@ -243,7 +256,7 @@ def pytest_configure(config):
     3. Nothing available -> corpus-dependent tests skip; storage-free and
        self-provisioning modules still run.
     """
-    global _DB_AVAILABLE
+    global _DB_AVAILABLE, _STORE_UNAVAILABLE
 
     try:
         from scitex_dev.store import testing
@@ -271,6 +284,7 @@ def pytest_configure(config):
             # "abort the run". The reason is printed so a real outage is still
             # diagnosable rather than silently absorbed.
             print(f"\nNo writable PostgreSQL for tests: {exc!r}")
+            _STORE_UNAVAILABLE = True
         else:
             scoped = _SESSION_STACK.enter_context(
                 testing.ephemeral_schema(dsn, prefix="crossref_session")
@@ -357,6 +371,11 @@ def store_env():
     test opened against a different DSN.
     """
     testing = pytest.importorskip("scitex_dev.store.testing")
+    if _STORE_UNAVAILABLE:
+        # The session already established there is no writable PostgreSQL.
+        # Re-probing would pay the same multi-minute timeout per test for an
+        # answer that cannot have changed.
+        pytest.skip("no writable PostgreSQL for store tests (probed once at session start)")
     previous = os.environ.get(STORE_DSN_ENV)
     try:
         with contextlib.ExitStack() as stack:
