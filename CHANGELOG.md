@@ -174,7 +174,11 @@ PyPI still had 0.7.6). 0.8.1 carries the audit fixes and ships the
 - Improved module docstrings with full API documentation
 
 ### Fixed
-- SQLite threading issue for FastAPI multi-threaded access
+- Database threading issue under multi-threaded FastAPI access — the
+  connection was shared across worker threads by a driver that could not
+  be. (The engine named in the original wording is recorded in
+  `docs/adr/0001-corpus-moves-to-the-shared-store.md`, which is the one
+  place a retired engine may still be named.)
 - Batch endpoint path in remote client
 - FastMCP API compatibility (`description` → `instructions`)
 

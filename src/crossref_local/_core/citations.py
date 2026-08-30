@@ -36,19 +36,20 @@ __all__ = [
 ]
 
 
-def _edges(store: "Optional[Store]" = None):
-    """Every citation edge, as ``(citing_doi, cited_doi)`` pairs.
+def _edge_query(field: str, doi: str, *, order_by: str, limit: "int | None" = None):
+    """A query for the edges whose ``field`` is ``doi``.
 
-    The store cannot filter, so both directions of the lookup below start
-    from the whole collection. This is the single most costly consequence
-    of the storage change for this module: what were two indexed lookups
-    (``idx_citations_cited``, ``idx_citations_citing``) are now full reads,
-    and the network builder issues one per node visited.
+    Both directions are indexed lookups in the database. They read only the
+    matching edges, which matters here more than anywhere else in the
+    package: the citation collection is the largest one there is
+    (~1.79 billion edges on the production corpus), and narrowing it in
+    this process rather than in the database is not something that can be
+    made to work by being careful about it.
     """
-    store = store if store is not None else citations_store()
-    for row in store.rows():
-        values = row.values
-        yield str(values.get("citing_doi")), str(values.get("cited_doi"))
+    from scitex_dev.store import Query, eq
+
+    built = Query().where(eq(field, doi)).ordered_by(order_by, descending=False)
+    return built if limit is None else built.limited(limit)
 
 
 def get_citing(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> List[str]:
@@ -63,9 +64,9 @@ def get_citing(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> L
     Returns:
         List of DOIs that cite this paper
     """
-    found = [citing for citing, cited in _edges(store) if cited == doi]
-    found.sort()
-    return found[:limit]
+    store = store if store is not None else citations_store()
+    query = _edge_query("cited_doi", doi, order_by="citing_doi", limit=limit)
+    return [str(row.values.get("citing_doi")) for row in store.search(query)]
 
 
 def get_cited(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> List[str]:
@@ -80,14 +81,16 @@ def get_cited(doi: str, limit: int = 100, store: "Optional[Store]" = None) -> Li
     Returns:
         List of DOIs that this paper cites
     """
-    found = [cited for citing, cited in _edges(store) if citing == doi]
-    found.sort()
-    return found[:limit]
+    store = store if store is not None else citations_store()
+    query = _edge_query("citing_doi", doi, order_by="cited_doi", limit=limit)
+    return [str(row.values.get("cited_doi")) for row in store.search(query)]
 
 
 def get_citation_count(doi: str, store: "Optional[Store]" = None) -> int:
     """
     Get the number of citations for a DOI.
+
+    Counted in the database — no edge crosses the connection.
 
     Args:
         doi: The DOI to count citations for
@@ -96,7 +99,8 @@ def get_citation_count(doi: str, store: "Optional[Store]" = None) -> int:
     Returns:
         Number of papers citing this DOI
     """
-    return sum(1 for _citing, cited in _edges(store) if cited == doi)
+    store = store if store is not None else citations_store()
+    return store.count(_edge_query("cited_doi", doi, order_by="citing_doi"))
 
 
 @_dataclass
@@ -177,22 +181,13 @@ class CitationNetwork:
     def _build_network(self):
         """Build the citation network by traversing citations.
 
-        The edge list is read ONCE and indexed in memory, rather than asked
-        for per node. The store cannot filter, so a per-node lookup would
-        re-read the whole collection for every node visited — quadratic in
-        the traversal, on the largest collection this package has.
+        One indexed lookup per node per direction, bounded by ``max_citing``
+        / ``max_cited``. An earlier version read the whole edge collection
+        once and indexed it in memory instead — that was the right shape
+        when the store could only be read in full, and it is the wrong one
+        now: a depth-2 network touches a handful of DOIs, and reading 1.79
+        billion edges to find them is worse than the traversal it avoided.
         """
-        by_cited: Dict[str, List[str]] = {}
-        by_citing: Dict[str, List[str]] = {}
-        for citing, cited in _edges(self.store):
-            by_cited.setdefault(cited, []).append(citing)
-            by_citing.setdefault(citing, []).append(cited)
-        for bucket in (by_cited, by_citing):
-            for dois in bucket.values():
-                dois.sort()
-        self._by_cited = by_cited
-        self._by_citing = by_citing
-
         # Start with center node
         to_process: List[Tuple[str, int]] = [(self.center_doi, 0)]
         processed: Set[str] = set()
@@ -212,15 +207,13 @@ class CitationNetwork:
                 continue
 
             # Get citing papers (papers that cite this one)
-            citing = by_cited.get(doi, [])[: self.max_citing]
-            for citing_doi in citing:
+            for citing_doi in get_citing(doi, self.max_citing, self.store):
                 self.edges.append(CitationEdge(citing_doi=citing_doi, cited_doi=doi))
                 if citing_doi not in processed:
                     to_process.append((citing_doi, current_depth + 1))
 
             # Get cited papers (papers this one cites)
-            cited = by_citing.get(doi, [])[: self.max_cited]
-            for cited_doi in cited:
+            for cited_doi in get_cited(doi, self.max_cited, self.store):
                 self.edges.append(CitationEdge(citing_doi=doi, cited_doi=cited_doi))
                 if cited_doi not in processed:
                     to_process.append((cited_doi, current_depth + 1))
@@ -232,7 +225,7 @@ class CitationNetwork:
 
         row = self.works.get({"doi": doi})
         metadata = row.values.get("metadata") if row is not None else None
-        citation_count = len(self._by_cited.get(doi, ()))
+        citation_count = get_citation_count(doi, self.store)
 
         if metadata:
             work = Work.from_metadata(doi, metadata)

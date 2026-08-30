@@ -163,6 +163,23 @@ WORKS: Schema = Schema.build(
             indexed=False,
         ),
     },
+    # The fields a full-text query searches, declared ONCE here because the
+    # store builds its text index from this list and the query compiler
+    # builds its match expression from the same list. An index that differs
+    # from its query by one character is simply never used, the planner says
+    # nothing about it, and the only symptom is that search got slow.
+    #
+    # This is what replaces the retired engine's separate full-text table,
+    # and it is a strictly better arrangement: that table was joined on a
+    # row identifier and could drift out of sync with the works it indexed,
+    # whereas these are columns of the record itself.
+    text_search=("title", "abstract", "authors", "container_title"),
+    # `english` stems and drops stopwords, which is what a literature search
+    # wants: "editing" should find "edited". The cost is that a stopword
+    # cannot be searched for on its own, which is why the grammar in
+    # `_core/fts.py` translates its operators rather than passing them
+    # through as words — see `_websearch_query` there.
+    text_config="english",
 )
 
 #: One directed citation edge. The pair is the identity, so re-ingesting the

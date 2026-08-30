@@ -8,25 +8,29 @@ table -> 12.70 s; ``citations`` 1,788,599,072 rows -> 4.35 s; ~17.5 s per
 ``info()`` call), and it kept the read path O(1) by falling back to a cheap
 ``MAX(rowid)`` estimate.
 
-**That estimator is gone and has no replacement.** It was a property of a
-rowid-addressed file, not of counting; the store primitive offers no count,
-no aggregate and no filtered read. The only way to size a collection now is
-:meth:`scitex_dev.store.Store.rows`, which materialises every record — so
-what used to be the cheap path is now the most expensive operation in the
-package.
+**That estimator is gone and has no replacement.** It read a rowid-addressed
+file's allocation counter, which is a property of that file format rather
+than of counting, and nothing in a real database corresponds to it.
 
-The invariant that mattered is therefore kept and made stricter:
+What DOES exist is a real count: :meth:`scitex_dev.store.Store.count` takes
+a query and answers in the database. So the counters below no longer
+materialise a collection to measure it — the number crosses the connection
+and nothing else does. That removes the memory hazard entirely; counting
+167M works no longer means holding 167M rows in this process.
+
+It does not make counting FREE. A ``COUNT(*)`` over a corpus that size is
+still a scan inside the server, in the seconds, which is the same reason
+this module existed in the first place. So the split is unchanged:
 
 - :func:`get_counts` — the read path — NEVER counts. It reads the cache, or
-  reports ``counts_source: "unavailable"``. It does not fall back to a scan,
-  because a fallback that costs a full-collection read would turn every
-  ``info()`` call and every ``/health`` probe into one.
-- :func:`refresh_stats` — the write path — scans once and writes the cache.
+  reports ``counts_source: "unavailable"``. A fallback here would put a
+  multi-second scan behind every ``info()`` call and every ``/health``
+  probe, which is exactly the cost the cache exists to avoid.
+- :func:`refresh_stats` — the write path — counts once and writes the cache.
   Run it from the ingest pipeline or ``crossref-local sync-stats``.
 
 An estimate is never presented as exact, and an absent count is never
-presented as zero-the-number; ``counts_source`` always says which of the
-three happened.
+presented as zero-the-number; ``counts_source`` always says which happened.
 """
 
 from __future__ import annotations
@@ -68,9 +72,11 @@ STATS_COLLECTIONS = (
 
 
 def count_works(store=None) -> int:
-    """Exact number of works. Reads the whole collection."""
+    """Exact number of works. Counted in the database, not in this process."""
+    from scitex_dev.store import Query
+
     store = store if store is not None else works_store()
-    return len(store.rows())
+    return store.count(Query())
 
 
 def count_searchable(store=None) -> int:
@@ -78,22 +84,29 @@ def count_searchable(store=None) -> int:
 
     A work with neither title, abstract nor author text cannot be returned
     by any query, so counting it as indexed would overstate what search can
-    reach — which is precisely the drift the old separate index table made
-    possible and this collapses.
+    reach — precisely the drift the old separate index table made possible
+    and this collapses.
+
+    ``nonempty`` rather than "is not null": a record that stores an empty
+    title satisfies ``IS NOT NULL`` and is still unsearchable, so the
+    stricter test is the one that answers the question actually being asked.
     """
+    from scitex_dev.store import Query, either, nonempty
+
     store = store if store is not None else works_store()
-    total = 0
-    for row in store.rows():
-        values = row.values
-        if any(values.get(field) for field in ("title", "abstract", "authors")):
-            total += 1
-    return total
+    return store.count(
+        Query().where(
+            either(nonempty("title"), nonempty("abstract"), nonempty("authors"))
+        )
+    )
 
 
 def count_citations(store=None) -> int:
-    """Exact number of citation edges. Reads the whole collection."""
+    """Exact number of citation edges. Counted in the database."""
+    from scitex_dev.store import Query
+
     store = store if store is not None else citations_store()
-    return len(store.rows())
+    return store.count(Query())
 
 
 _COUNTERS = {

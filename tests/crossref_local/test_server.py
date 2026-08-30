@@ -29,8 +29,17 @@ def real_doi_from_search(client):
 
 @pytest.fixture
 def batch_dois(client):
-    """Resolve several DOIs for batch tests; skip if too few."""
-    response = client.get("/works?q=science&limit=3")
+    """Resolve several DOIs for batch tests; skip if too few.
+
+    The probe term must be a WHOLE WORD the seeded corpus contains, not a
+    substring of one. This asked for ``science`` and passed only because
+    search used to match substrings — ``science`` inside ``neuroscience``.
+    Once matching became word-and-stem based (which is what the store's
+    text index does, and what this package documented all along), the probe
+    stopped matching and all four batch tests SKIPPED. They did not fail;
+    the suite stayed green while the batch endpoint went untested.
+    """
+    response = client.get("/works?q=neuroscience&limit=3")
     if response.status_code != 200:
         pytest.skip("could not collect a batch of DOIs from /works")
     results = response.json().get("results", [])
