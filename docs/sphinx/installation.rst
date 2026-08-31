@@ -5,7 +5,8 @@ Requirements
 ------------
 
 - Python 3.10+
-- SQLite with FTS5 support (included in most Python installations)
+- ``scitex-dev>=0.57.0``
+- Access to this host's shared store (the corpus lives there)
 
 Install from PyPI
 -----------------
@@ -39,27 +40,36 @@ Install from Source
     cd crossref-local
     pip install -e ".[all]"
 
-Database Setup
---------------
+Store Setup
+-----------
 
-The database file is not included in the package. You need to obtain it separately:
+The corpus is not a file and is not shipped in the package. It lives in this
+host's shared store — one PostgreSQL-backed store per host, resolved by
+:func:`scitex_dev.store.host_store`. There is no path to configure and no
+dump to download.
 
-1. Set the database path via environment variable:
+1. Optionally point at a store other than this host's own:
 
 .. code-block:: bash
 
-    export CROSSREF_LOCAL_DB=/path/to/crossref.db
+    export SCITEX_STORE_DSN=...
 
-2. Or place the database at one of the default locations:
+``crossref-local`` never builds or reads a DSN itself; ``scitex-dev`` owns
+that resolution. Leave the variable unset to use this host's store.
 
-   - ``./data/crossref.db`` (project directory)
-   - ``$SCITEX_DIR/crossref-local/runtime/crossref.db`` (runtime state dir)
-   - ``~/.crossref_local/crossref.db`` (legacy, deprecated)
+2. Populate and refresh the corpus incrementally from the CrossRef REST API:
 
-HTTP Mode (No Local Database)
------------------------------
+.. code-block:: bash
 
-If you don't have the database locally, you can connect to a remote server:
+    crossref-local update-db --yes
+
+    # Refresh the exact-count cache that status and info() read
+    crossref-local sync-stats
+
+HTTP Mode (No Local Store)
+--------------------------
+
+If this machine has no store of its own, you can connect to a remote server:
 
 .. code-block:: bash
 

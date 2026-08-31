@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "crossref-local"
-version = "0.7.6"
+version = "0.9.0"
 description = "Local CrossRef database with 167M+ works and full-text search"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -19,7 +19,6 @@ keywords = [
     "doi",
     "academic",
     "full-text-search",
-    "fts5",
     "impact-factor",
     "scitex",
 ]
@@ -37,7 +36,18 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "scitex-config>=0.3.0",
-    "scitex-dev>=0.11.5",
+    # HARD dependency, not an extra. The corpus lives in the fleet's shared
+    # store and `scitex_dev.store` is the only way this package reads or
+    # writes anything — there is no second storage path to fall back to, so
+    # an optional pin would describe a configuration that cannot run.
+    #
+    # >=0.57.0 specifically: that is the release which removed the
+    # file-backed backend, leaving one storage engine, and which added
+    # `scitex_dev.store.testing` (the ephemeral schema/cluster helpers this
+    # package's tests need in order to test any store-touching path at all).
+    # The PostgreSQL driver arrives with it — psycopg is a core dependency
+    # of scitex-dev, not an extra — so it is deliberately not repeated here.
+    "scitex-dev>=0.57.0",
 ]
 
 [project.optional-dependencies]

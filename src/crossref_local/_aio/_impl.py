@@ -2,7 +2,7 @@
 Async API for crossref_local.
 
 Provides async versions of all API functions. Uses thread pool execution
-with per-thread database connections for thread safety.
+with per-thread stores for thread safety.
 
 Usage:
     from crossref_local import aio
@@ -20,12 +20,11 @@ Usage:
 """
 
 import asyncio as _asyncio
-import threading as _threading
 from typing import List, Optional
 
 from .._core.config import Config as _Config
-from .._core.db import Database as _Database
 from .._core.models import SearchResult, Work
+from .._core.store import works_store as _works_store
 
 __all__ = [
     "search",
@@ -41,37 +40,46 @@ __all__ = [
     "Work",
 ]
 
-# Thread-local storage for database connections
-_thread_local = _threading.local()
+def _works():
+    """The works collection for THIS thread.
+
+    No thread-local bookkeeping is kept here any more: the openers in
+    :mod:`crossref_local._core.store` are themselves thread-local, so one
+    store per thread — the property this module needed and used to
+    implement itself — is preserved by calling the opener directly. Two
+    thread-pool workers never share a connection.
+    """
+    return _works_store()
 
 
-def _get_thread_db() -> _Database:
-    """Get thread-local database connection."""
-    if not hasattr(_thread_local, "db"):
-        _thread_local.db = _Database(_Config.get_db_path())
-    return _thread_local.db
+def _metadata_of(row) -> Optional[dict]:
+    """The parsed ``metadata`` of a work row, or None for a miss.
+
+    ``metadata`` is a declared JSON field, so the primitive returns a
+    ``dict``; nothing is decompressed or re-parsed here.
+    """
+    if row is None:
+        return None
+    return row.values.get("metadata") or None
 
 
 def _search_sync(query: str, limit: int, offset: int) -> SearchResult:
     """Thread-safe sync search."""
     from .._core import fts
 
-    db = _get_thread_db()
-    return fts._search_with_db(db, query, limit, offset)
+    return fts._search_with_store(_works(), query, limit, offset)
 
 
 def _count_sync(query: str) -> int:
     """Thread-safe sync count."""
     from .._core import fts
 
-    db = _get_thread_db()
-    return fts._count_with_db(db, query)
+    return fts._count_with_store(_works(), query)
 
 
 def _get_sync(doi: str) -> Optional[Work]:
     """Thread-safe sync get."""
-    db = _get_thread_db()
-    metadata = db.get_metadata(doi)
+    metadata = _metadata_of(_works().get({"doi": doi}))
     if metadata:
         return Work.from_metadata(doi, metadata)
     return None
@@ -79,10 +87,10 @@ def _get_sync(doi: str) -> Optional[Work]:
 
 def _get_many_sync(dois: List[str]) -> List[Work]:
     """Thread-safe sync get_many."""
-    db = _get_thread_db()
+    store = _works()
     works = []
     for doi in dois:
-        metadata = db.get_metadata(doi)
+        metadata = _metadata_of(store.get({"doi": doi}))
         if metadata:
             works.append(Work.from_metadata(doi, metadata))
     return works
@@ -90,35 +98,20 @@ def _get_many_sync(dois: List[str]) -> List[Work]:
 
 def _exists_sync(doi: str) -> bool:
     """Thread-safe sync exists."""
-    db = _get_thread_db()
-    row = db.fetchone("SELECT 1 FROM works WHERE doi = ?", (doi,))
-    return row is not None
+    return _works().get({"doi": doi}) is not None
 
 
 def _info_sync() -> dict:
-    """Thread-safe sync info."""
-    db = _get_thread_db()
+    """Thread-safe sync info.
 
-    row = db.fetchone("SELECT COUNT(*) as count FROM works")
-    work_count = row["count"] if row else 0
-
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM works_fts")
-        fts_count = row["count"] if row else 0
-    except Exception:
-        fts_count = 0
-
-    try:
-        row = db.fetchone("SELECT COUNT(*) as count FROM citations")
-        citation_count = row["count"] if row else 0
-    except Exception:
-        citation_count = 0
+    Counts come from the exact-count cache or are reported as unavailable
+    — never a scan. See ``_core/stats.py``.
+    """
+    from .._core.stats import get_counts as _get_counts
 
     return {
-        "db_path": str(_Config.get_db_path()),
-        "works": work_count,
-        "fts_indexed": fts_count,
-        "citations": citation_count,
+        "store": _Config.describe_store(),
+        **_get_counts(),
     }
 
 
@@ -131,7 +124,7 @@ async def search(
     Async full-text search across works.
 
     Args:
-        query: Search query (supports FTS5 syntax)
+        query: Search query (supports AND, OR, NOT, "phrases")
         limit: Maximum results to return
         offset: Skip first N results (for pagination)
 
@@ -146,7 +139,7 @@ async def count(query: str) -> int:
     Async count matching works without fetching results.
 
     Args:
-        query: FTS5 search query
+        query: Search query (supports AND, OR, NOT, "phrases")
 
     Returns:
         Number of matching works
@@ -182,7 +175,7 @@ async def get_many(dois: List[str]) -> List[Work]:
 
 async def exists(doi: str) -> bool:
     """
-    Async check if a DOI exists in the database.
+    Async check if a DOI exists in the corpus.
 
     Args:
         doi: Digital Object Identifier
@@ -195,10 +188,10 @@ async def exists(doi: str) -> bool:
 
 async def info() -> dict:
     """
-    Async get database information.
+    Async get store information.
 
     Returns:
-        Dictionary with database stats
+        Dictionary with the store description and corpus counts
     """
     return await _asyncio.to_thread(_info_sync)
 

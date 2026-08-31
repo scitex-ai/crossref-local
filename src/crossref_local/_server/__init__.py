@@ -1,4 +1,4 @@
-"""FastAPI server for CrossRef Local with FTS5 search.
+"""FastAPI server for CrossRef Local.
 
 Modular server structure:
 - routes_works.py: /works endpoints
@@ -73,46 +73,50 @@ def root():
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
-    from .._core.db import get_db
+    """Health check endpoint.
 
-    db = get_db()
+    Reports the store this host reads under ``store``. That value is a
+    credential-free description, never the connection string: a DSN can
+    carry a password and this response is public.
+
+    ``store_available`` only resolves the target — it opens no connection
+    — so a probe of this endpoint stays O(1) no matter how far away the
+    store is. A target that resolves but refuses the connection surfaces
+    at first real use, naming the address and the reason.
+    """
+    from .._core.config import Config, store_available
+
+    available = store_available()
     return {
-        "status": "healthy",
-        "database_connected": db is not None,
-        "database_path": str(db.db_path) if db else None,
+        "status": "healthy" if available else "degraded",
+        "store": Config.describe_store(),
     }
 
 
 @app.get("/info")
 def info():
-    """Get database statistics."""
-    from .._core.db import get_db
+    """Get corpus statistics.
+
+    Counts come from the exact-count cache written by ``refresh_stats``
+    (``crossref-local sync-stats``), or are reported as unavailable when
+    that cache is absent. This endpoint NEVER counts: the store has no
+    aggregate, so counting means reading every record, and a probe must
+    not cost that. ``counts_source`` labels which path produced the
+    numbers.
+    """
+    from .._core.config import Config
+    from .._core.stats import get_counts
     from .models import InfoResponse
 
-    db = get_db()
-
-    # Use MAX(rowid) as fast O(1) approximation (COUNT(*) is too slow on 167M+ rows)
-    row = db.fetchone("SELECT MAX(rowid) as count FROM works")
-    work_count = row["count"] if row else 0
-
-    try:
-        row = db.fetchone("SELECT MAX(rowid) as count FROM works_fts")
-        fts_count = row["count"] if row else 0
-    except Exception:
-        fts_count = 0
-
-    try:
-        row = db.fetchone("SELECT MAX(rowid) as count FROM citations")
-        citation_count = row["count"] if row else 0
-    except Exception:
-        citation_count = 0
+    counts = get_counts()
 
     return InfoResponse(
-        total_papers=work_count,
-        fts_indexed=fts_count,
-        citations=citation_count,
-        database_path=str(db.db_path),
+        total_papers=counts["works"],
+        fts_indexed=counts["fts_indexed"],
+        citations=counts["citations"],
+        counts_source=counts["counts_source"],
+        counts_computed_at=counts["counts_computed_at"],
+        store=Config.describe_store(),
     )
 
 

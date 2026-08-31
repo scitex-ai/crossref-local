@@ -25,14 +25,17 @@ def _strip_xml_tags(text: str) -> str:
     return text.strip()
 
 
-def _get_if_fast(db, issn: str, cache: dict) -> Optional[float]:
-    """Fast IF lookup from OpenAlex data."""
-    if issn in cache:
-        return cache[issn]
-    q = "SELECT two_year_mean_citedness FROM journals_openalex WHERE issns LIKE ?"
-    row = db.fetchone(q, (f"%{issn}%",))
-    cache[issn] = row["two_year_mean_citedness"] if row else None
-    return cache[issn]
+def _get_if(issn: str) -> Optional[float]:
+    """The journal's OpenAlex IF proxy for one ISSN.
+
+    This used to be a second copy of the query the HTTP server ran, with
+    its own cache. Both now call the one indexed lookup in
+    :mod:`crossref_local._impact_factor.journal_lookup`, so the two
+    surfaces cannot answer differently.
+    """
+    from .._impact_factor import impact_factor_for_issn
+
+    return impact_factor_for_issn(issn)
 
 
 @click.command("search", context_settings=CONTEXT_SETTINGS)
@@ -80,7 +83,6 @@ def search_cmd(
       $ crossref-local search "neural network" --save results.json
     """
     from .._core.config import Config
-    from .._core.db import get_db
 
     try:
         results = search(query, limit=limit, offset=offset, with_if=with_if)
@@ -89,12 +91,7 @@ def search_cmd(
         sys.exit(1)
 
     # Local IF lookup only in DB mode (HTTP gets IF from API)
-    if_cache, db = {}, None
-    if with_if and Config.get_mode() != "http":
-        try:
-            db = get_db()
-        except FileNotFoundError:
-            pass
+    local_if = with_if and Config.get_mode() != "http"
 
     # Save to file if requested
     if save_path:
@@ -134,7 +131,7 @@ def search_cmd(
                 click.echo(f"   Authors: {authors_str}")
             journal_line = f"   Journal: {work.journal or 'N/A'}"
             if_val = work.impact_factor or (
-                db and work.issn and _get_if_fast(db, work.issn, if_cache)
+                local_if and work.issn and _get_if(work.issn)
             )
             if if_val:
                 journal_line += f" (IF: {if_val:.1f}, OpenAlex)"

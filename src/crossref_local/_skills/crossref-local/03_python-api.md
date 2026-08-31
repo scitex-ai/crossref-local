@@ -15,9 +15,9 @@ import crossref_local as crl
 
 | Symbol | Purpose |
 |---|---|
-| `search(query, limit=...)` | FTS5 full-text search → `SearchResult` |
-| `count(query)` | Count matches without retrieving them |
-| `exists(doi)` | Boolean DOI presence check |
+| `search(query, limit=...)` | Full-text search → `SearchResult` (scans the works collection — see [14_search.md](14_search.md)) |
+| `count(query)` | Count matches without building `Work` objects (same scan) |
+| `exists(doi)` | Boolean DOI presence check (keyed read) |
 
 ## Retrieval + enrichment
 
@@ -65,11 +65,13 @@ import crossref_local as crl
 
 | Symbol | Purpose |
 |---|---|
-| `configure(...)` | One-shot global config |
 | `configure_http(api_url=...)` | Force HTTP mode |
-| `configure_remote(...)` | Configure remote relay |
+| `configure_remote(...)` | Configure remote relay (alias of `configure_http`) |
 | `get_mode()` | `"db"` or `"http"` |
-| `info()` | Status snapshot (DB path, mode, version) |
+| `info()` | Status snapshot (mode, `store`, cached counts, `counts_source`) |
+| `refresh_stats()` | Recompute the exact-count cache (full scan) |
+
+`configure(db_path)` is removed — there is no database file to point at.
 
 ## Async
 

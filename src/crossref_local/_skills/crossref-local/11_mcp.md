@@ -57,7 +57,11 @@ citation string if `as_citation=True`.
 status() -> str   # JSON
 ```
 
-Returns `{mode, status, db_path, works, fts_indexed, citations}`.
+Returns `{mode, status, store, works, fts_indexed, citations, counts_source,
+counts_computed_at}`. `store` is a credential-free name for the store this
+host reads — never the connection string. Counts come from the cache;
+`counts_source` is `"exact"` or `"unavailable"` (refresh with
+`crossref-local sync-stats`).
 
 ### `enrich_dois`
 
@@ -121,14 +125,15 @@ check_bibtex_file(
   "mcpServers": {
     "crossref-local": {
       "command": "crossref-local",
-      "args": ["mcp", "start"],
-      "env": {
-        "CROSSREF_LOCAL_DB": "/path/to/crossref.db"
-      }
+      "args": ["mcp", "start"]
     }
   }
 }
 ```
+
+No store configuration is needed: `scitex-dev` resolves this host's own
+store. Add `"env": {"SCITEX_STORE_DSN": "..."}` only to point at a different
+one.
 
 ### Remote (HTTP)
 
@@ -151,7 +156,7 @@ Client config:
 ## Diagnostics
 
 ```bash
-crossref-local mcp doctor         # checks fastmcp install + DB access
+crossref-local mcp doctor         # checks fastmcp install + store access
 crossref-local mcp installation   # prints client config templates
 crossref-local mcp list-tools     # all tool names
 crossref-local mcp list-tools -v  # with signatures

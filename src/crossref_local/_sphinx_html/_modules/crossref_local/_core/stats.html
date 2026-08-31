@@ -1,0 +1,417 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>crossref_local._core.stats &mdash; CrossRef Local v0.5.0</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            CrossRef Local
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-pypi">Install from PyPI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-source">Install from Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#verify-installation">Verify Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#python-api">Python API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#basic-search">Basic Search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#get-by-doi">Get by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#http-mode">HTTP Mode</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#command-line-interface">Command Line Interface</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#search">Search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#id1">Get by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#http-relay-server">HTTP Relay Server</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#mcp-server">MCP Server</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#environment-variables">Environment Variables</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../cli_reference.html">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#global-options">Global Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#commands">Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#search">search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#search-by-doi">search-by-doi</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#status">status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#relay">relay</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#mcp-commands">MCP Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#mcp-start">mcp start</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#mcp-tools">mcp tools</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#list-apis">list-apis</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../http_api.html">HTTP API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#starting-the-server">Starting the Server</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#endpoints">Endpoints</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#root">Root</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#health-check">Health Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#store-info">Store Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#search-works">Search Works</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-work-by-doi">Get Work by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#batch-lookup">Batch Lookup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#citations">Citations</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-citing-papers">Get Citing Papers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-cited-papers">Get Cited Papers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-count">Citation Count</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-network">Citation Network</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#query-syntax">Query Syntax</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/crossref_local.html">crossref_local API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#main-functions">Main Functions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.search"><code class="docutils literal notranslate"><span class="pre">search()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get"><code class="docutils literal notranslate"><span class="pre">get()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#data-classes">Data Classes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#work">Work</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#searchresult">SearchResult</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">CrossRef Local</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">crossref_local._core.stats</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for crossref_local._core.stats</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Collection counts, with an exact-count cache.</span>
+
+<span class="sd">WHY THIS MODULE STILL EXISTS, AND WHAT CHANGED</span>
+<span class="sd">----------------------------------------------</span>
+<span class="sd">It was written because ``COUNT(*)`` was prohibitively slow on the corpus</span>
+<span class="sd">(measured 2026-07-22: ``works`` 167,008,748 rows -&gt; 0.42 s; the full-text</span>
+<span class="sd">table -&gt; 12.70 s; ``citations`` 1,788,599,072 rows -&gt; 4.35 s; ~17.5 s per</span>
+<span class="sd">``info()`` call), and it kept the read path O(1) by falling back to a cheap</span>
+<span class="sd">``MAX(rowid)`` estimate.</span>
+
+<span class="sd">**That estimator is gone and has no replacement.** It was a property of a</span>
+<span class="sd">rowid-addressed file, not of counting; the store primitive offers no count,</span>
+<span class="sd">no aggregate and no filtered read. The only way to size a collection now is</span>
+<span class="sd">:meth:`scitex_dev.store.Store.rows`, which materialises every record — so</span>
+<span class="sd">what used to be the cheap path is now the most expensive operation in the</span>
+<span class="sd">package.</span>
+
+<span class="sd">The invariant that mattered is therefore kept and made stricter:</span>
+
+<span class="sd">- :func:`get_counts` — the read path — NEVER counts. It reads the cache, or</span>
+<span class="sd">  reports ``counts_source: "unavailable"``. It does not fall back to a scan,</span>
+<span class="sd">  because a fallback that costs a full-collection read would turn every</span>
+<span class="sd">  ``info()`` call and every ``/health`` probe into one.</span>
+<span class="sd">- :func:`refresh_stats` — the write path — scans once and writes the cache.</span>
+<span class="sd">  Run it from the ingest pipeline or ``crossref-local sync-stats``.</span>
+
+<span class="sd">An estimate is never presented as exact, and an absent count is never</span>
+<span class="sd">presented as zero-the-number; ``counts_source`` always says which of the</span>
+<span class="sd">three happened.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span> <span class="k">as</span> <span class="n">_datetime</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">timezone</span> <span class="k">as</span> <span class="n">_timezone</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span> <span class="k">as</span> <span class="n">_Optional</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.store</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CITATIONS</span><span class="p">,</span>
+    <span class="n">WORKS</span><span class="p">,</span>
+    <span class="n">citations_store</span><span class="p">,</span>
+    <span class="n">corpus_stats_store</span><span class="p">,</span>
+    <span class="n">works_store</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">"STATS_COLLECTIONS"</span><span class="p">,</span>
+    <span class="s2">"count_works"</span><span class="p">,</span>
+    <span class="s2">"count_searchable"</span><span class="p">,</span>
+    <span class="s2">"count_citations"</span><span class="p">,</span>
+    <span class="s2">"read_cached_counts"</span><span class="p">,</span>
+    <span class="s2">"get_counts"</span><span class="p">,</span>
+    <span class="s2">"refresh_stats"</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="c1">#: (cache key, public ``info()`` key) pairs — order defines output order.</span>
+<span class="c1">#:</span>
+<span class="c1">#: ``searchable`` replaces the old ``works_fts`` entry. There is no separate</span>
+<span class="c1">#: full-text collection any more: a work is searchable when it carries the</span>
+<span class="c1">#: text :mod:`crossref_local._core.fts` reads, so the number is a property</span>
+<span class="c1">#: of the works collection rather than of a second table that could drift</span>
+<span class="c1">#: out of sync with it.</span>
+<span class="n">STATS_COLLECTIONS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="p">(</span><span class="s2">"works"</span><span class="p">,</span> <span class="s2">"works"</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">"searchable"</span><span class="p">,</span> <span class="s2">"fts_indexed"</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">"citations"</span><span class="p">,</span> <span class="s2">"citations"</span><span class="p">),</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">count_works</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Exact number of works. Reads the whole collection."""</span>
+    <span class="n">store</span> <span class="o">=</span> <span class="n">store</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">works_store</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">rows</span><span class="p">())</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">count_searchable</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Exact number of works carrying searchable text.</span>
+
+<span class="sd">    A work with neither title, abstract nor author text cannot be returned</span>
+<span class="sd">    by any query, so counting it as indexed would overstate what search can</span>
+<span class="sd">    reach — which is precisely the drift the old separate index table made</span>
+<span class="sd">    possible and this collapses.</span>
+<span class="sd">    """</span>
+    <span class="n">store</span> <span class="o">=</span> <span class="n">store</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">works_store</span><span class="p">()</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">rows</span><span class="p">():</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">values</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">field</span><span class="p">)</span> <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"title"</span><span class="p">,</span> <span class="s2">"abstract"</span><span class="p">,</span> <span class="s2">"authors"</span><span class="p">)):</span>
+            <span class="n">total</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">total</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">count_citations</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Exact number of citation edges. Reads the whole collection."""</span>
+    <span class="n">store</span> <span class="o">=</span> <span class="n">store</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">citations_store</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">rows</span><span class="p">())</span>
+
+
+<span class="n">_COUNTERS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"works"</span><span class="p">:</span> <span class="n">count_works</span><span class="p">,</span>
+    <span class="s2">"searchable"</span><span class="p">:</span> <span class="n">count_searchable</span><span class="p">,</span>
+    <span class="s2">"citations"</span><span class="p">:</span> <span class="n">count_citations</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">read_cached_counts</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Read exact counts from the cache collection.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        store: The corpus-stats store (opens this host's if not provided).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        ``{"works": n, "fts_indexed": n, "citations": n,</span>
+<span class="sd">        "counts_computed_at": &lt;ISO timestamp&gt;}`` when the cache covers every</span>
+<span class="sd">        tracked collection, else ``None`` — absent entry, unreadable value,</span>
+<span class="sd">        or partial coverage. The caller then reports the counts as</span>
+<span class="sd">        unavailable rather than filling the gap with a number it did not</span>
+<span class="sd">        measure.</span>
+<span class="sd">    """</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">store</span> <span class="o">=</span> <span class="n">store</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">corpus_stats_store</span><span class="p">()</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">by_key</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"collection"</span><span class="p">)):</span> <span class="n">row</span><span class="o">.</span><span class="n">values</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">}</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">by_key</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">_public</span> <span class="ow">in</span> <span class="n">STATS_COLLECTIONS</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">stamps</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">public</span> <span class="ow">in</span> <span class="n">STATS_COLLECTIONS</span><span class="p">:</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">by_key</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="n">row_count</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"row_count"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">row_count</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">row_count</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">counts</span><span class="p">[</span><span class="n">public</span><span class="p">]</span> <span class="o">=</span> <span class="n">row_count</span>
+        <span class="n">stamps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"computed_at"</span><span class="p">))</span>
+
+    <span class="c1"># Report the OLDEST stamp: the honest age of the least-fresh count.</span>
+    <span class="n">counts</span><span class="p">[</span><span class="s2">"counts_computed_at"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">((</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">stamps</span> <span class="k">if</span> <span class="n">s</span><span class="p">),</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">counts</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_counts</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Collection counts for ``info()`` — cache only, never a scan.</span>
+
+<span class="sd">    ``counts_source`` is ``"exact"`` when the cache answered and</span>
+<span class="sd">    ``"unavailable"`` when it did not. There is deliberately no third,</span>
+<span class="sd">    cheaper path: the estimator that used to fill that role read a</span>
+<span class="sd">    file-format detail that no longer exists, and inventing a number here</span>
+<span class="sd">    would be worse than saying the count is not known.</span>
+<span class="sd">    """</span>
+    <span class="n">cached</span> <span class="o">=</span> <span class="n">read_cached_counts</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cached</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cached</span><span class="p">[</span><span class="s2">"counts_source"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"exact"</span>
+        <span class="k">return</span> <span class="n">cached</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="n">public</span><span class="p">:</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">_key</span><span class="p">,</span> <span class="n">public</span> <span class="ow">in</span> <span class="n">STATS_COLLECTIONS</span>
+    <span class="p">}</span> <span class="o">|</span> <span class="p">{</span>
+        <span class="s2">"counts_computed_at"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">"counts_source"</span><span class="p">:</span> <span class="s2">"unavailable"</span><span class="p">,</span>
+        <span class="s2">"note"</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">"No cached counts. Run `crossref-local sync-stats` to compute "</span>
+            <span class="s2">"them; the read path does not count, because counting means "</span>
+            <span class="s2">"reading every record."</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+
+
+<div class="viewcode-block" id="refresh_stats">
+<a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.refresh_stats">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">refresh_stats</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Count every collection exactly and write the cache.</span>
+
+<span class="sd">    Slow by design — it reads each collection in full — so run it from the</span>
+<span class="sd">    ingest pipeline or ``crossref-local sync-stats``, never from ``info()``.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        store: The corpus-stats store (opens this host's if not provided).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The freshly computed counts, same shape as :func:`get_counts`</span>
+<span class="sd">        (``counts_source: "exact"``).</span>
+<span class="sd">    """</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">scitex_dev.store</span><span class="w"> </span><span class="kn">import</span> <span class="n">ANY_REVISION</span>
+
+    <span class="n">cache</span> <span class="o">=</span> <span class="n">store</span> <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">corpus_stats_store</span><span class="p">()</span>
+    <span class="n">computed_at</span> <span class="o">=</span> <span class="n">_datetime</span><span class="o">.</span><span class="n">now</span><span class="p">(</span><span class="n">_timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">)</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(</span><span class="n">timespec</span><span class="o">=</span><span class="s2">"seconds"</span><span class="p">)</span>
+
+    <span class="n">counts</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">public</span> <span class="ow">in</span> <span class="n">STATS_COLLECTIONS</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="n">_COUNTERS</span><span class="p">[</span><span class="n">key</span><span class="p">]()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># A collection that has never been written does not exist yet.</span>
+            <span class="c1"># Recording 0 keeps the same convention info() has always used</span>
+            <span class="c1"># for an absent table.</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">cache</span><span class="o">.</span><span class="n">put</span><span class="p">(</span>
+            <span class="p">{</span><span class="s2">"collection"</span><span class="p">:</span> <span class="n">key</span><span class="p">,</span> <span class="s2">"row_count"</span><span class="p">:</span> <span class="n">n</span><span class="p">,</span> <span class="s2">"computed_at"</span><span class="p">:</span> <span class="n">computed_at</span><span class="p">},</span>
+            <span class="c1"># ANY_REVISION: this is a cache entry with a single logical</span>
+            <span class="c1"># writer per run and no lost-update hazard worth a retry loop —</span>
+            <span class="c1"># the value is recomputed from scratch each time, so an</span>
+            <span class="c1"># overwritten one loses nothing that cannot be recomputed.</span>
+            <span class="n">expected_revision</span><span class="o">=</span><span class="n">ANY_REVISION</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">counts</span><span class="p">[</span><span class="n">public</span><span class="p">]</span> <span class="o">=</span> <span class="n">n</span>
+
+    <span class="n">counts</span><span class="p">[</span><span class="s2">"counts_computed_at"</span><span class="p">]</span> <span class="o">=</span> <span class="n">computed_at</span>
+    <span class="n">counts</span><span class="p">[</span><span class="s2">"counts_source"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"exact"</span>
+    <span class="k">return</span> <span class="n">counts</span></div>
+
+
+
+<span class="c1"># Names the schemas so a reader of this module can see what is counted</span>
+<span class="c1"># without opening the store module.</span>
+<span class="n">_TRACKED_SCHEMAS</span> <span class="o">=</span> <span class="p">(</span><span class="n">WORKS</span><span class="p">,</span> <span class="n">CITATIONS</span><span class="p">)</span>
+
+<span class="c1"># EOF</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Yusuke Watanabe.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -21,7 +21,7 @@
 </p>
 
 ```bash
-# Search 167M papers locally — no API rate limits, ~22 ms full-text query
+# Search 167M papers locally — no API rate limits, no API keys
 crossref-local search "epilepsy seizure prediction"
 
 # Resolve a DOI to full record (title, abstract, citations, journal IF)
@@ -31,24 +31,24 @@ crossref-local search-by-doi 10.1038/nature11247
 crossref-local mcp serve
 ```
 
-The image is a live capture against the local DB; the `<details>`
+The image is a live capture against the local store; the `<details>`
 block below has a 6m55s MCP-driven demo video.
 
 ## Architecture
 
 ```
 ┌──────────────────────────┐    ┌──────────────────────────┐
-│ CrossRef public dump     │    │ JCR / OpenAlex IF tables │
-│ (~100 GB compressed)     │    │                          │
+│ CrossRef REST API        │    │ OpenAlex journal metadata│
+│ (paged incrementally)    │    │ (impact factors)         │
 └──────────────┬───────────┘    └──────────────┬───────────┘
-               │ dois2sqlite                   │
+               │ crossref-local update-db      │
                ▼                               ▼
-       ┌─────────────────┐               ┌──────────────┐
-       │ crossref.db     │ ◀── joins ──▶ │ impact-factor│
-       │ (SQLite + FTS5) │               │ table        │
-       └────────┬────────┘               └──────────────┘
-                │
-                ▼
+   ┌───────────────────────────────────────────────────┐
+   │ this host's shared store (scitex_dev.store)       │
+   │   works · citations · journals · corpus_stats     │
+   └───────────────────────┬───────────────────────────┘
+                           │
+                           ▼
    ┌──────────────────────────────────┐
    │ crossref-local — Python / CLI / MCP │
    │   search · search-by-doi · cache    │
@@ -56,10 +56,11 @@ block below has a 6m55s MCP-driven demo video.
    └──────────────────────────────────┘
 ```
 
-The DB lives entirely on disk; `crossref-local` is a thin facade over
-SQLite + FTS5 + a small impact-factor table. No network calls during
-queries; rebuild scripts under `make fts-build-screen` /
-`citations-build-screen` are the only producers of state.
+The corpus lives in the fleet's shared store — one PostgreSQL-backed store
+per host, resolved by `scitex_dev.store.host_store()`. `crossref-local` is a
+thin facade over its `works`, `citations` and `journals` collections: no
+database file to place, no path to configure, no download step.
+`crossref-local update-db` is the only producer of state.
 
 [![PyPI version](https://badge.fury.io/py/crossref-local.svg)](https://badge.fury.io/py/crossref-local)
 [![Documentation](https://readthedocs.org/projects/crossref-local/badge/?version=latest)](https://crossref-local.readthedocs.io/en/latest/)
@@ -78,7 +79,7 @@ queries; rebuild scripts under `make fts-build-screen` /
 </p>
 
 Live demonstration of MCP server integration with Claude Code for `epilepsy seizure prediction` literature review:
-- Full-text search on title, abstracts, and keywords across 167M papers (22ms response)
+- Full-text search on title, abstracts, and keywords across 167M papers
 
 📄 [Full demo documentation](examples/demo_mcp.org) | 📊 [Generated diagrams](examples/04_mcp_demo_out/)
 
@@ -94,7 +95,7 @@ Live demonstration of MCP server integration with Claude Code for `epilepsy seiz
 | 📝 **Abstracts** | Full text for semantic understanding |
 | 📊 **Impact Factor** | Filter by journal quality |
 | 🔗 **Citations** | Prioritize influential papers |
-| ⚡ **Speed** | 167M records in ms, no rate limits |
+| 🔓 **No gatekeeping** | Local reads — no API key, no quota, no throttling |
 
 Perfect for: RAG systems, research assistants, literature review automation.
 
@@ -113,19 +114,22 @@ git clone https://github.com/ywatanabe1989/crossref-local
 cd crossref-local && make install
 ```
 
-Database setup (1.5 TB, ~2 weeks to build):
+Store setup — nothing to download, nothing to build:
 ```bash
-# 1. Download CrossRef data (~100GB compressed)
-aria2c "https://academictorrents.com/details/..."
+# 1. The corpus lives in this host's shared store. scitex-dev resolves it
+#    from SCITEX_STORE_DSN; leave it unset to use this host's own store.
+export SCITEX_STORE_DSN=...   # optional override
 
-# 2. Build SQLite database (~days)
-pip install dois2sqlite
-dois2sqlite build /path/to/crossref-data ./data/crossref.db
+# 2. Populate / refresh incrementally from the CrossRef REST API
+crossref-local update-db --yes
 
-# 3. Build FTS5 index (~60 hours) & citations table (~days)
-make fts-build-screen
-make citations-build-screen
+# 3. Refresh the exact-count cache that `status` and `info()` read
+crossref-local sync-stats
 ```
+
+`update-db` pages the CrossRef REST API from the last recorded sync date and
+upserts what it finds, so it is both the initial fill and the ongoing
+refresh. Run it under cron with `--yes --quiet`.
 
 </details>
 
@@ -135,7 +139,7 @@ make citations-build-screen
 ```python
 from crossref_local import search, get, count
 
-# Full-text search (22ms for 541 matches across 167M records)
+# Full-text search
 results = search("hippocampal sharp wave ripples")
 for work in results:
     print(f"{work.title} ({work.year})")
@@ -172,7 +176,7 @@ With abstracts (`-a` flag):
 ```
 $ crossref-local search "RS-1 enhances CRISPR" -n 1 -a
 
-Found 4 matches in 128.4ms
+Found 4 matches
 
 1. RS-1 enhances CRISPR/Cas9- and TALEN-mediated knock-in efficiency (2016)
    DOI: 10.1038/ncomms10548
@@ -193,7 +197,7 @@ crossref-local relay --host 0.0.0.0 --port 31291
 
 Endpoints:
 ```bash
-# Search works (FTS5)
+# Search works
 curl "http://localhost:31291/works?q=CRISPR&limit=10"
 
 # Get by DOI
@@ -251,7 +255,7 @@ Local MCP client configuration:
       "command": "crossref-local",
       "args": ["mcp", "start"],
       "env": {
-        "CROSSREF_LOCAL_DB": "/path/to/crossref.db"
+        "SCITEX_STORE_DSN": "postgresql://…"
       }
     }
   }
@@ -273,9 +277,12 @@ crossref-local mcp start -t http --host 0.0.0.0 --port 8082
 }
 ```
 
+`SCITEX_STORE_DSN` is optional — omit it and `scitex-dev` resolves this
+host's own store.
+
 Diagnose setup:
 ```bash
-crossref-local mcp doctor        # Check dependencies and database
+crossref-local mcp doctor        # Check dependencies and store
 crossref-local mcp list-tools    # Show available MCP tools
 crossref-local mcp installation  # Show client config examples
 ```
@@ -330,13 +337,23 @@ network.save_html("citation_network.html")  # requires: pip install crossref-loc
 <details>
 <summary><strong>Performance</strong></summary>
 
-| Query | Matches | Time |
-|-------|---------|------|
-| `hippocampal sharp wave ripples` | 541 | 22ms |
-| `machine learning` | 477,922 | 113ms |
-| `CRISPR genome editing` | 12,170 | 257ms |
+DOI lookups — `get()`, `get_many()`, `exists()` — are keyed reads on the
+store and stay cheap at any corpus size.
 
-Searching 167M records in milliseconds via FTS5.
+**Full-text search does not.** `search()` and `count()` match in Python over
+every record in the works collection, because the store primitive offers no
+text search, no filtered read and no aggregate. That is one full scan of the
+collection per query: correct at any size, acceptable only at small ones,
+and not viable against the full ~167M-work corpus. The fix is a query
+surface on the store primitive, which does not exist yet; until it does,
+this is a real regression against the previous file-backed engine and is
+stated here rather than hidden. See `crossref_local._core.fts` and the ADR
+under `docs/adr/`.
+
+Counts are never measured on the read path. `info()` reports
+`counts_source: "exact"` from the cache that `crossref-local sync-stats`
+writes, or `"unavailable"` when that cache is absent — it does not fall back
+to counting, because counting means reading every record.
 
 </details>
 
@@ -363,6 +380,9 @@ Searching 167M records in milliseconds via FTS5.
 
 ## Installation
 
+Requirements: Python 3.10+, `scitex-dev>=0.57.0`, and access to this host's
+shared store.
+
 ```bash
 pip install crossref-local              # core
 pip install crossref-local[mcp]         # + MCP server
@@ -382,7 +402,7 @@ cd crossref-local && make install
 ```python
 from crossref_local import search, get, count
 
-# Full-text search (22ms for 541 matches across 167M records)
+# Full-text search
 results = search("hippocampal sharp wave ripples")
 for work in results:
     print(f"{work.title} ({work.year})")

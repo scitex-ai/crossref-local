@@ -9,8 +9,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 IMAGE_NAME="crossref-local"
 CONTAINER_NAME="crossref-local"
-DATA_PATH="${CROSSREF_LOCAL_DATA:-/path/to/crossref_local/data}"
 PORT="${CROSSREF_LOCAL_PORT:-3333}"
+
+# The corpus is a store the package connects to, not a directory to bind in,
+# so there is no data volume. SCITEX_STORE_DSN is forwarded from this shell
+# when set, and never echoed: a DSN can carry a password.
+STORE_ENV=()
+if [[ -n "${SCITEX_STORE_DSN:-}" ]]; then
+    STORE_ENV=(-e "SCITEX_STORE_DSN=${SCITEX_STORE_DSN}")
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -31,7 +38,6 @@ COMMANDS:
     shell       Open interactive shell
 
 OPTIONS:
-    -d, --data PATH    Data directory with crossref.db (default: \$CROSSREF_LOCAL_DATA)
     -p, --port PORT    Port for API server (default: 3333)
     -b, --build        Force rebuild of Docker image
     -h, --help         Show this help message
@@ -43,8 +49,8 @@ EXAMPLES:
     $(basename "$0") shell                  # Interactive shell
 
 ENVIRONMENT:
-    CROSSREF_LOCAL_DATA   Data directory (default: /path/to/crossref_local/data)
     CROSSREF_LOCAL_PORT   API port (default: 3333)
+    SCITEX_STORE_DSN      Optional store override, forwarded into the container
 EOF
 }
 
@@ -63,9 +69,8 @@ run_api() {
     echo -e "${GREEN}Starting API server on port ${PORT}...${NC}"
     docker run --rm -it \
         --name "${CONTAINER_NAME}" \
-        -v "${DATA_PATH}:/data:ro" \
         -p "${PORT}:3333" \
-        -e CROSSREF_LOCAL_DB=/data/crossref.db \
+        ${STORE_ENV[@]+"${STORE_ENV[@]}"} \
         "${IMAGE_NAME}" \
         crossref-local api --host 0.0.0.0 --port 3333
 }
@@ -74,24 +79,21 @@ run_serve() {
     echo -e "${GREEN}Starting MCP server...${NC}"
     docker run --rm -it \
         --name "${CONTAINER_NAME}" \
-        -v "${DATA_PATH}:/data:ro" \
-        -e CROSSREF_LOCAL_DB=/data/crossref.db \
+        ${STORE_ENV[@]+"${STORE_ENV[@]}"} \
         "${IMAGE_NAME}" \
         crossref-local serve
 }
 
 run_command() {
     docker run --rm -it \
-        -v "${DATA_PATH}:/data:ro" \
-        -e CROSSREF_LOCAL_DB=/data/crossref.db \
+        ${STORE_ENV[@]+"${STORE_ENV[@]}"} \
         "${IMAGE_NAME}" \
         crossref-local "$@"
 }
 
 run_shell() {
     docker run --rm -it \
-        -v "${DATA_PATH}:/data:ro" \
-        -e CROSSREF_LOCAL_DB=/data/crossref.db \
+        ${STORE_ENV[@]+"${STORE_ENV[@]}"} \
         "${IMAGE_NAME}" \
         /bin/bash
 }
@@ -102,7 +104,6 @@ COMMAND="api"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -d|--data) DATA_PATH="$2"; shift 2 ;;
         -p|--port) PORT="$2"; shift 2 ;;
         -b|--build) BUILD=1; shift ;;
         -h|--help) usage; exit 0 ;;

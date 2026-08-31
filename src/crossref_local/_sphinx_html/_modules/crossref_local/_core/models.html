@@ -48,8 +48,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-pypi">Install from PyPI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-source">Install from Source</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#database-setup">Database Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-database">HTTP Mode (No Local Database)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../installation.html#verify-installation">Verify Installation</a></li>
 </ul>
 </li>
@@ -95,7 +95,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#root">Root</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#health-check">Health Check</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#database-info">Database Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#store-info">Store Info</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#search-works">Search Works</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-work-by-doi">Get Work by DOI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#batch-lookup">Batch Lookup</a></li>
@@ -108,7 +108,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-network">Citation Network</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#fts5-query-syntax">FTS5 Query Syntax</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#query-syntax">Query Syntax</a></li>
 </ul>
 </li>
 </ul>
@@ -121,12 +121,14 @@
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure"><code class="docutils literal notranslate"><span class="pre">configure()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#data-classes">Data Classes</a><ul>
@@ -163,16 +165,16 @@
            <div itemprop="articleBody">
              
   <h1>Source code for crossref_local._core.models</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Data models for crossref_local.&quot;&quot;&quot;</span>
+<span></span><span class="sd">"""Data models for crossref_local."""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span> <span class="k">as</span> <span class="n">_dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">field</span> <span class="k">as</span> <span class="n">_field</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
 
 <span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="s2">&quot;Work&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;SearchResult&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;LimitInfo&quot;</span><span class="p">,</span>
+    <span class="s2">"Work"</span><span class="p">,</span>
+    <span class="s2">"SearchResult"</span><span class="p">,</span>
+    <span class="s2">"LimitInfo"</span><span class="p">,</span>
 <span class="p">]</span>
 
 
@@ -180,7 +182,7 @@
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work">[docs]</a>
 <span class="nd">@_dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">Work</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Represents a scholarly work from CrossRef.</span>
 
 <span class="sd">    Attributes:</span>
@@ -199,7 +201,7 @@
 <span class="sd">        url: Resource URL</span>
 <span class="sd">        citation_count: Number of citations (if available)</span>
 <span class="sd">        references: List of reference DOIs</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">doi</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">title</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -222,8 +224,8 @@
 <div class="viewcode-block" id="Work.from_metadata">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.from_metadata">[docs]</a>
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_metadata</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">doi</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Work&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_metadata</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">doi</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Work"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Create Work from CrossRef metadata JSON.</span>
 
 <span class="sd">        Args:</span>
@@ -232,55 +234,55 @@
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Work instance</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="c1"># Extract authors</span>
         <span class="n">authors</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">author</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;author&quot;</span><span class="p">,</span> <span class="p">[]):</span>
-            <span class="n">given</span> <span class="o">=</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;given&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
-            <span class="n">family</span> <span class="o">=</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;family&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">author</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"author"</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="n">given</span> <span class="o">=</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"given"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
+            <span class="n">family</span> <span class="o">=</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"family"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">given</span> <span class="ow">and</span> <span class="n">family</span><span class="p">:</span>
-                <span class="n">authors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">given</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">family</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">authors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">given</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">family</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
             <span class="k">elif</span> <span class="n">family</span><span class="p">:</span>
                 <span class="n">authors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">family</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">):</span>
-                <span class="n">authors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">author</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="n">author</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">):</span>
+                <span class="n">authors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">author</span><span class="p">[</span><span class="s2">"name"</span><span class="p">])</span>
 
         <span class="c1"># Extract year from published date</span>
         <span class="n">year</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">published</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;published&quot;</span><span class="p">,</span> <span class="p">{})</span>
-        <span class="n">date_parts</span> <span class="o">=</span> <span class="n">published</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;date-parts&quot;</span><span class="p">,</span> <span class="p">[[]])</span>
+        <span class="n">published</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"published"</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">date_parts</span> <span class="o">=</span> <span class="n">published</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"date-parts"</span><span class="p">,</span> <span class="p">[[]])</span>
         <span class="k">if</span> <span class="n">date_parts</span> <span class="ow">and</span> <span class="n">date_parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
             <span class="n">year</span> <span class="o">=</span> <span class="n">date_parts</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
 
         <span class="c1"># Extract references</span>
         <span class="n">references</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reference&quot;</span><span class="p">,</span> <span class="p">[]):</span>
-            <span class="k">if</span> <span class="n">ref</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;DOI&quot;</span><span class="p">):</span>
-                <span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ref</span><span class="p">[</span><span class="s2">&quot;DOI&quot;</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">ref</span> <span class="ow">in</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="k">if</span> <span class="n">ref</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"DOI"</span><span class="p">):</span>
+                <span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ref</span><span class="p">[</span><span class="s2">"DOI"</span><span class="p">])</span>
 
         <span class="c1"># Container title (journal name)</span>
-        <span class="n">container_titles</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;container-title&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">container_titles</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"container-title"</span><span class="p">,</span> <span class="p">[])</span>
         <span class="n">journal</span> <span class="o">=</span> <span class="n">container_titles</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">container_titles</span> <span class="k">else</span> <span class="kc">None</span>
 
         <span class="c1"># ISSN</span>
-        <span class="n">issns</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ISSN&quot;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="n">issns</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"ISSN"</span><span class="p">,</span> <span class="p">[])</span>
         <span class="n">issn</span> <span class="o">=</span> <span class="n">issns</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">issns</span> <span class="k">else</span> <span class="kc">None</span>
 
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
             <span class="n">doi</span><span class="o">=</span><span class="n">doi</span><span class="p">,</span>
-            <span class="n">title</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">,</span> <span class="p">[</span><span class="kc">None</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">title</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"title"</span><span class="p">,</span> <span class="p">[</span><span class="kc">None</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"title"</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
             <span class="n">authors</span><span class="o">=</span><span class="n">authors</span><span class="p">,</span>
             <span class="n">year</span><span class="o">=</span><span class="n">year</span><span class="p">,</span>
             <span class="n">journal</span><span class="o">=</span><span class="n">journal</span><span class="p">,</span>
             <span class="n">issn</span><span class="o">=</span><span class="n">issn</span><span class="p">,</span>
-            <span class="n">volume</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;volume&quot;</span><span class="p">),</span>
-            <span class="n">issue</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;issue&quot;</span><span class="p">),</span>
-            <span class="n">page</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page&quot;</span><span class="p">),</span>
-            <span class="n">publisher</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;publisher&quot;</span><span class="p">),</span>
-            <span class="nb">type</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">),</span>
-            <span class="n">abstract</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;abstract&quot;</span><span class="p">),</span>
-            <span class="n">url</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;URL&quot;</span><span class="p">),</span>
-            <span class="n">citation_count</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;is-referenced-by-count&quot;</span><span class="p">),</span>
+            <span class="n">volume</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"volume"</span><span class="p">),</span>
+            <span class="n">issue</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"issue"</span><span class="p">),</span>
+            <span class="n">page</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"page"</span><span class="p">),</span>
+            <span class="n">publisher</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"publisher"</span><span class="p">),</span>
+            <span class="nb">type</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">),</span>
+            <span class="n">abstract</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"abstract"</span><span class="p">),</span>
+            <span class="n">url</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"URL"</span><span class="p">),</span>
+            <span class="n">citation_count</span><span class="o">=</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"is-referenced-by-count"</span><span class="p">),</span>
             <span class="n">references</span><span class="o">=</span><span class="n">references</span><span class="p">,</span>
         <span class="p">)</span></div>
 
@@ -288,68 +290,68 @@
 <div class="viewcode-block" id="Work.to_dict">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.to_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert to dictionary.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Convert to dictionary."""</span>
         <span class="k">return</span> <span class="p">{</span>
-            <span class="s2">&quot;doi&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">doi</span><span class="p">,</span>
-            <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="p">,</span>
-            <span class="s2">&quot;authors&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">authors</span><span class="p">,</span>
-            <span class="s2">&quot;year&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="p">,</span>
-            <span class="s2">&quot;journal&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">journal</span><span class="p">,</span>
-            <span class="s2">&quot;issn&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">issn</span><span class="p">,</span>
-            <span class="s2">&quot;volume&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">,</span>
-            <span class="s2">&quot;issue&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">issue</span><span class="p">,</span>
-            <span class="s2">&quot;page&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">page</span><span class="p">,</span>
-            <span class="s2">&quot;publisher&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">publisher</span><span class="p">,</span>
-            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="p">,</span>
-            <span class="s2">&quot;abstract&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">abstract</span><span class="p">,</span>
-            <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">url</span><span class="p">,</span>
-            <span class="s2">&quot;citation_count&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">citation_count</span><span class="p">,</span>
-            <span class="s2">&quot;references&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">,</span>
-            <span class="s2">&quot;impact_factor&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">impact_factor</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="s2">"doi"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">doi</span><span class="p">,</span>
+            <span class="s2">"title"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">title</span><span class="p">,</span>
+            <span class="s2">"authors"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">authors</span><span class="p">,</span>
+            <span class="s2">"year"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="p">,</span>
+            <span class="s2">"journal"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">journal</span><span class="p">,</span>
+            <span class="s2">"issn"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">issn</span><span class="p">,</span>
+            <span class="s2">"volume"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">,</span>
+            <span class="s2">"issue"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">issue</span><span class="p">,</span>
+            <span class="s2">"page"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">page</span><span class="p">,</span>
+            <span class="s2">"publisher"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">publisher</span><span class="p">,</span>
+            <span class="s2">"type"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">type</span><span class="p">,</span>
+            <span class="s2">"abstract"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">abstract</span><span class="p">,</span>
+            <span class="s2">"url"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">url</span><span class="p">,</span>
+            <span class="s2">"citation_count"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">citation_count</span><span class="p">,</span>
+            <span class="s2">"references"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="p">,</span>
+            <span class="s2">"impact_factor"</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">impact_factor</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">impact_factor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
             <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="s2">&quot;impact_factor_source&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">impact_factor_source</span><span class="p">,</span>
+            <span class="s2">"impact_factor_source"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">impact_factor_source</span><span class="p">,</span>
         <span class="p">}</span></div>
 
 
 <div class="viewcode-block" id="Work.citation">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.citation">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">citation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;apa&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">citation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"apa"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Format as citation string.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            style: Citation style (currently only &quot;apa&quot; supported)</span>
+<span class="sd">            style: Citation style (currently only "apa" supported)</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Formatted citation string</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">authors_str</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">authors</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+<span class="sd">        """</span>
+        <span class="n">authors_str</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">authors</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">authors</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
-            <span class="n">authors_str</span> <span class="o">+=</span> <span class="s2">&quot; et al.&quot;</span>
+            <span class="n">authors_str</span> <span class="o">+=</span> <span class="s2">" et al."</span>
 
-        <span class="n">year_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="k">else</span> <span class="s2">&quot;(n.d.)&quot;</span>
-        <span class="n">title_str</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="ow">or</span> <span class="s2">&quot;Untitled&quot;</span>
-        <span class="n">journal_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;*</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">journal</span><span class="si">}</span><span class="s2">*&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">journal</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">year_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">year</span><span class="si">}</span><span class="s2">)"</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">year</span> <span class="k">else</span> <span class="s2">"(n.d.)"</span>
+        <span class="n">title_str</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">title</span> <span class="ow">or</span> <span class="s2">"Untitled"</span>
+        <span class="n">journal_str</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"*</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">journal</span><span class="si">}</span><span class="s2">*"</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">journal</span> <span class="k">else</span> <span class="s2">""</span>
 
         <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span><span class="n">authors_str</span><span class="p">,</span> <span class="n">year_str</span><span class="p">,</span> <span class="n">title_str</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">journal_str</span><span class="p">:</span>
             <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">journal_str</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="p">:</span>
-            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">issue</span><span class="p">:</span>
-                <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">issue</span><span class="si">}</span><span class="s2">)&quot;</span>
+                <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">issue</span><span class="si">}</span><span class="s2">)"</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">page</span><span class="p">:</span>
             <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">page</span><span class="p">)</span>
-        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;https://doi.org/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"https://doi.org/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">doi</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="s2">&quot;. &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">parts</span><span class="p">))</span></div>
+        <span class="k">return</span> <span class="s2">". "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">parts</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="Work.to_text">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.to_text">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">include_abstract</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Format as human-readable text.</span>
 
 <span class="sd">        Args:</span>
@@ -357,7 +359,7 @@
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Formatted text string</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">work_to_text</span>
 
         <span class="k">return</span> <span class="n">work_to_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">include_abstract</span><span class="o">=</span><span class="n">include_abstract</span><span class="p">)</span></div>
@@ -366,12 +368,12 @@
 <div class="viewcode-block" id="Work.to_bibtex">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.to_bibtex">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_bibtex</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Format as BibTeX entry.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            BibTeX string</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">work_to_bibtex</span>
 
         <span class="k">return</span> <span class="n">work_to_bibtex</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div>
@@ -379,22 +381,22 @@
 
 <div class="viewcode-block" id="Work.save">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.Work.save">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;json&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"json"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Save work to file.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            path: Output file path</span>
-<span class="sd">            format: Output format (&quot;text&quot;, &quot;json&quot;, &quot;bibtex&quot;)</span>
+<span class="sd">            format: Output format ("text", "json", "bibtex")</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Path to saved file</span>
 
 <span class="sd">        Examples:</span>
-<span class="sd">            &gt;&gt;&gt; work = get(&quot;10.1038/nature12373&quot;)</span>
-<span class="sd">            &gt;&gt;&gt; work.save(&quot;paper.json&quot;)</span>
-<span class="sd">            &gt;&gt;&gt; work.save(&quot;paper.bib&quot;, format=&quot;bibtex&quot;)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            &gt;&gt;&gt; work = get("10.1038/nature12373")</span>
+<span class="sd">            &gt;&gt;&gt; work.save("paper.json")</span>
+<span class="sd">            &gt;&gt;&gt; work.save("paper.bib", format="bibtex")</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">save</span>
 
         <span class="k">return</span> <span class="n">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="nb">format</span><span class="p">)</span></div>
@@ -404,7 +406,7 @@
 
 <span class="nd">@_dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">LimitInfo</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Information about result limiting at each stage.</span>
 
 <span class="sd">    Attributes:</span>
@@ -413,25 +415,25 @@
 <span class="sd">        total_available: Total matches in database</span>
 <span class="sd">        capped: Whether results were capped</span>
 <span class="sd">        capped_reason: Why results were capped (if applicable)</span>
-<span class="sd">        stage: Which stage applied this limit (e.g., &quot;crossref-local&quot;, &quot;scitex&quot;, &quot;django&quot;)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        stage: Which stage applied this limit (e.g., "crossref-local", "scitex", "django")</span>
+<span class="sd">    """</span>
 
     <span class="n">requested</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">returned</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">total_available</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">capped</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">capped_reason</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">stage</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;crossref-local&quot;</span>
+    <span class="n">stage</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"crossref-local"</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert to dictionary.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Convert to dictionary."""</span>
         <span class="k">return</span> <span class="p">{</span>
-            <span class="s2">&quot;requested&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">requested</span><span class="p">,</span>
-            <span class="s2">&quot;returned&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">returned</span><span class="p">,</span>
-            <span class="s2">&quot;total_available&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_available</span><span class="p">,</span>
-            <span class="s2">&quot;capped&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">capped</span><span class="p">,</span>
-            <span class="s2">&quot;capped_reason&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">capped_reason</span><span class="p">,</span>
-            <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">stage</span><span class="p">,</span>
+            <span class="s2">"requested"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">requested</span><span class="p">,</span>
+            <span class="s2">"returned"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">returned</span><span class="p">,</span>
+            <span class="s2">"total_available"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_available</span><span class="p">,</span>
+            <span class="s2">"capped"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">capped</span><span class="p">,</span>
+            <span class="s2">"capped_reason"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">capped_reason</span><span class="p">,</span>
+            <span class="s2">"stage"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">stage</span><span class="p">,</span>
         <span class="p">}</span>
 
 
@@ -439,7 +441,7 @@
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.SearchResult">[docs]</a>
 <span class="nd">@_dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">SearchResult</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Container for search results with metadata.</span>
 
 <span class="sd">    Attributes:</span>
@@ -448,7 +450,7 @@
 <span class="sd">        query: Original search query</span>
 <span class="sd">        elapsed_ms: Search time in milliseconds</span>
 <span class="sd">        limit_info: Information about result limiting</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="n">works</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Work</span><span class="p">]</span>
     <span class="n">total</span><span class="p">:</span> <span class="nb">int</span>
@@ -468,25 +470,25 @@
 <div class="viewcode-block" id="SearchResult.save">
 <a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.SearchResult.save">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">save</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;json&quot;</span><span class="p">,</span> <span class="n">include_abstract</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"json"</span><span class="p">,</span> <span class="n">include_abstract</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Save search results to file.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            path: Output file path</span>
-<span class="sd">            format: Output format (&quot;text&quot;, &quot;json&quot;, &quot;bibtex&quot;)</span>
+<span class="sd">            format: Output format ("text", "json", "bibtex")</span>
 <span class="sd">            include_abstract: Include abstracts in text format</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            Path to saved file</span>
 
 <span class="sd">        Examples:</span>
-<span class="sd">            &gt;&gt;&gt; results = search(&quot;machine learning&quot;, limit=10)</span>
-<span class="sd">            &gt;&gt;&gt; results.save(&quot;results.json&quot;)</span>
-<span class="sd">            &gt;&gt;&gt; results.save(&quot;results.bib&quot;, format=&quot;bibtex&quot;)</span>
-<span class="sd">            &gt;&gt;&gt; results.save(&quot;results.txt&quot;, format=&quot;text&quot;)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            &gt;&gt;&gt; results = search("machine learning", limit=10)</span>
+<span class="sd">            &gt;&gt;&gt; results.save("results.json")</span>
+<span class="sd">            &gt;&gt;&gt; results.save("results.bib", format="bibtex")</span>
+<span class="sd">            &gt;&gt;&gt; results.save("results.txt", format="text")</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">save</span>
 
         <span class="k">return</span> <span class="n">save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="nb">format</span><span class="p">,</span> <span class="n">include_abstract</span><span class="o">=</span><span class="n">include_abstract</span><span class="p">)</span></div>

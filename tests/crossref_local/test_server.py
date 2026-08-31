@@ -29,8 +29,17 @@ def real_doi_from_search(client):
 
 @pytest.fixture
 def batch_dois(client):
-    """Resolve several DOIs for batch tests; skip if too few."""
-    response = client.get("/works?q=science&limit=3")
+    """Resolve several DOIs for batch tests; skip if too few.
+
+    The probe term must be a WHOLE WORD the seeded corpus contains, not a
+    substring of one. This asked for ``science`` and passed only because
+    search used to match substrings — ``science`` inside ``neuroscience``.
+    Once matching became word-and-stem based (which is what the store's
+    text index does, and what this package documented all along), the probe
+    stopped matching and all four batch tests SKIPPED. They did not fail;
+    the suite stayed green while the batch endpoint went untested.
+    """
+    response = client.get("/works?q=neuroscience&limit=3")
     if response.status_code != 200:
         pytest.skip("could not collect a batch of DOIs from /works")
     results = response.json().get("results", [])
@@ -109,12 +118,14 @@ def test_health_endpoint_reports_status_healthy(client):
     assert data["status"] == "healthy"
 
 
-def test_health_endpoint_includes_database_connected_field(client):
-    # Arrange
+def test_health_endpoint_includes_store_field(client):
+    # Arrange — `database_connected` became `store`: the probe resolves a
+    # target rather than opening a connection, so what it can honestly
+    # report is WHICH store, not whether a socket is up.
     # Act
     data = client.get("/health").json()
     # Assert
-    assert "database_connected" in data
+    assert "store" in data
 
 
 # ---------- /info ----------
@@ -150,6 +161,23 @@ def test_info_endpoint_total_papers_field_is_integer(client):
     data = client.get("/info").json()
     # Assert
     assert isinstance(data["total_papers"], int)
+
+
+def test_info_endpoint_includes_counts_source_field(client):
+    # Arrange
+    # Act
+    data = client.get("/info").json()
+    # Assert
+    assert "counts_source" in data
+
+
+def test_info_endpoint_counts_source_is_honest_label(client):
+    # Arrange
+    # Act
+    data = client.get("/info").json()
+    # Assert — cache-backed "exact", or "unavailable" when no cache has
+    # been written; never a silent full-collection scan on the read path.
+    assert data["counts_source"] in {"exact", "unavailable"}
 
 
 # ---------- /works search ----------

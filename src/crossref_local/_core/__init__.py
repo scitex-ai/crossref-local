@@ -2,7 +2,7 @@
 """Internal core modules for crossref_local."""
 
 from .api import (
-    configure,
+    close_stores,
     configure_http,
     configure_remote,
     count,
@@ -13,6 +13,7 @@ from .api import (
     get_many,
     get_mode,
     info,
+    refresh_stats,
     search,
 )
 from .citations import (
@@ -22,9 +23,21 @@ from .citations import (
     get_citing,
 )
 from .config import Config
-from .db import Database, close_db, get_db
 from .export import SUPPORTED_FORMATS, save
 from .models import SearchResult, Work
+from .store import (
+    CITATIONS,
+    CORPUS_STATS,
+    JOURNALS,
+    SYNC_STATE,
+    WORKS,
+    citations_store,
+    corpus_stats_store,
+    journals_store,
+    sync_state_store,
+    works_store,
+)
+from .update import update
 
 __all__ = [
     # API functions
@@ -35,11 +48,11 @@ __all__ = [
     "exists",
     "enrich",
     "enrich_dois",
-    "configure",
     "configure_http",
     "configure_remote",
     "get_mode",
     "info",
+    "refresh_stats",
     # Models
     "Work",
     "SearchResult",
@@ -48,15 +61,27 @@ __all__ = [
     "get_cited",
     "get_citation_count",
     "CitationNetwork",
-    # Database
-    "Database",
-    "get_db",
-    "close_db",
+    # Store — the schemas and the openers that hand out a bare Store.
+    # There is no connection wrapper here on purpose: callers use the
+    # primitive's own get/rows/put.
+    "WORKS",
+    "CITATIONS",
+    "JOURNALS",
+    "CORPUS_STATS",
+    "SYNC_STATE",
+    "works_store",
+    "citations_store",
+    "journals_store",
+    "corpus_stats_store",
+    "sync_state_store",
+    "close_stores",
     # Config
     "Config",
     # Export
     "save",
     "SUPPORTED_FORMATS",
+    # Update (incremental refresh)
+    "update",
 ]
 
 # EOF

@@ -1,80 +1,95 @@
 #!/usr/bin/env python3
-"""
-Journal lookup module for fast name-to-ISSN resolution.
+"""Journal lookup: name -> ISSN, and ISSN -> OpenAlex journal metadata.
 
-Uses OpenAlex journals table (222k journals with IF proxy) for fast lookups.
-Falls back to direct database query if table doesn't exist.
+Everything here reads the ``crossref_journals`` collection through
+:func:`crossref_local._core.store.journals_store`. The store primitive has
+no filtered read, no join and no ordering, so selection and ranking happen
+in Python over :meth:`~scitex_dev.store.Store.rows`.
+
+Two things the previous implementation did have gone away:
+
+*No table feature-detection.* It probed the engine's own catalog to decide
+whether ``journals_openalex`` and ``issn_lookup`` existed, and branched on
+the answer. A collection always exists once its schema is declared, so the
+question "does the table exist" has no meaning here. The question that
+still has meaning is "has anything been written to it", and that is asked
+directly — an empty :meth:`~scitex_dev.store.Store.rows` — at the one place
+it changes behaviour (:meth:`JournalLookup.get_issn` falls back to scanning
+works).
+
+*No join table.* Alternate ISSNs live in the ``issns`` list on the journal
+record itself, so an ISSN that is not the ISSN-L is found by looking inside
+that list rather than by joining a second table.
+
+WHAT THAT COSTS, STATED PLAINLY. Every lookup that is not a point read on
+the ISSN-L reads the whole journal collection (~222k records at the size
+this was written for). The fallback that scans works is far worse and is
+only reached when the journal collection is empty.
 """
 
-import json
-import sqlite3
-from typing import Dict, List, Optional
+from __future__ import annotations
+
 import logging
+from typing import Dict, List, Optional
+
+from .._core.store import journals_store, works_store
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "JournalLookup",
+    "impact_factor_for_issn",
+    "impact_factor_index",
+]
+
+
+def _works_count(values) -> int:
+    """``works_count`` as a sortable integer.
+
+    A missing count sorts last rather than raising: ``sorted`` cannot
+    compare ``None`` with ``int``, and one record with an unwritten count
+    would otherwise break ranking for every caller.
+    """
+    count = values.get("works_count")
+    return count if isinstance(count, int) and not isinstance(count, bool) else -1
+
+
+def _issns_of(values) -> List[str]:
+    """Every ISSN a journal record answers to — its ISSN-L and its list."""
+    out: List[str] = []
+    issn_l = values.get("issn_l")
+    if issn_l:
+        out.append(str(issn_l))
+    issns = values.get("issns")
+    if isinstance(issns, list):
+        out.extend(str(issn) for issn in issns if issn)
+    return out
+
 
 class JournalLookup:
+    """Journal name / ISSN resolution over the journal collection.
+
+    Thread-safe by construction when no store is passed: the openers in
+    :mod:`crossref_local._core.store` hand out one store per thread, so two
+    threads never share a connection.
+
+    Args:
+        store: The journal collection (opens this thread's if not given).
+        works: The works collection, used only by the slow fallback below
+            (opens this thread's if not given).
     """
-    Fast journal name to ISSN lookup.
 
-    Uses journals_openalex table for O(1) lookups with IF proxy data.
-    Falls back to slow works table scan if OpenAlex table doesn't exist.
+    def __init__(self, store=None, *, works=None):
+        self._store = store
+        self._works = works
 
-    Thread-safe: creates a new connection for each query to avoid
-    SQLite threading issues in async/multi-threaded environments.
-    """
+    def _journals(self):
+        return self._store if self._store is not None else journals_store()
 
-    def __init__(self, db_path: str):
-        """
-        Initialize journal lookup.
+    def _works_collection(self):
+        return self._works if self._works is not None else works_store()
 
-        Args:
-            db_path: Path to CrossRef SQLite database
-        """
-        self.db_path = db_path
-        # Check table existence once at init (safe - single query)
-        with self._get_connection() as conn:
-            self._openalex_exists = self._check_table_exists(conn, 'journals_openalex')
-            self._issn_lookup_exists = self._check_table_exists(conn, 'issn_lookup')
-
-        if self._openalex_exists:
-            logger.info("Using journals_openalex table for fast lookups")
-        else:
-            logger.warning(
-                "journals_openalex table not found. "
-                "Run download_openalex_journals.py for fast lookups. "
-                "Falling back to slow query."
-            )
-
-    def _get_connection(self):
-        """Create a new database connection (context manager).
-
-        Creates a fresh connection for each query to ensure thread safety.
-        SQLite connections cannot be shared across threads.
-        """
-        from contextlib import contextmanager
-
-        @contextmanager
-        def connection():
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            try:
-                yield conn
-            finally:
-                conn.close()
-
-        return connection()
-
-    @staticmethod
-    def _check_table_exists(conn, table_name: str) -> bool:
-        """Check if a table exists in the database."""
-        cursor = conn.execute("""
-            SELECT name FROM sqlite_master
-            WHERE type='table' AND name=?
-        """, (table_name,))
-        return cursor.fetchone() is not None
-
+    # -- name -> ISSN ----------------------------------------------------
 
     def get_issn(self, journal_name: str, strict: bool = True) -> Optional[str]:
         """
@@ -82,168 +97,149 @@ class JournalLookup:
 
         Args:
             journal_name: Journal name (case-insensitive)
-            strict: If True, only exact matches. If False, allow partial matches.
+            strict: If True, only exact matches. If False, allow partial
+                matches, ranked by ``works_count``.
 
         Returns:
             ISSN string or None if not found
         """
-        if self._openalex_exists:
-            return self._get_issn_openalex(journal_name, strict)
-        else:
-            return self._get_issn_slow(journal_name, strict)
+        rows = self._journals().rows()
+        if not rows:
+            logger.warning(
+                "Journal collection is empty. Load the OpenAlex journal "
+                "data for fast lookups; falling back to a works scan."
+            )
+            return self._get_issn_from_works(journal_name, strict)
 
-    def _get_issn_openalex(self, journal_name: str, strict: bool = True) -> Optional[str]:
-        """Fast lookup using OpenAlex journals table."""
-        with self._get_connection() as conn:
-            # Try exact match first
-            cursor = conn.execute("""
-                SELECT issn_l FROM journals_openalex
-                WHERE name_lower = ?
-                LIMIT 1
-            """, (journal_name.lower(),))
+        target = journal_name.lower()
 
-            result = cursor.fetchone()
-            if result and result[0]:
-                return result[0]
+        for row in rows:
+            if (row.values.get("name_lower") or "") == target:
+                issn = row.values.get("issn_l")
+                if issn:
+                    return str(issn)
 
-            # If strict mode, don't try partial match
-            if strict:
-                logger.debug(f"Strict mode: no exact match for '{journal_name}'")
-                return None
-
-            # Try partial match (only if not strict)
-            logger.warning(f"Using partial match for '{journal_name}' - results may be inaccurate")
-            cursor = conn.execute("""
-                SELECT issn_l, name FROM journals_openalex
-                WHERE name_lower LIKE ?
-                ORDER BY works_count DESC
-                LIMIT 1
-            """, (f"%{journal_name.lower()}%",))
-
-            result = cursor.fetchone()
-            if result and result[0]:
-                logger.warning(f"  Matched to: '{result[1]}'")
-                return result[0]
+        if strict:
+            logger.debug("Strict mode: no exact match for '%s'", journal_name)
             return None
 
-    def _get_issn_slow(self, journal_name: str, strict: bool = True) -> Optional[str]:
-        """Slow lookup by scanning works table."""
-        with self._get_connection() as conn:
-            if strict:
-                # Exact match
-                cursor = conn.execute("""
-                    SELECT DISTINCT json_extract(metadata, '$.ISSN[0]') as issn
-                    FROM works
-                    WHERE json_extract(metadata, '$.container-title[0]') = ?
-                    AND json_extract(metadata, '$.ISSN[0]') IS NOT NULL
-                    LIMIT 1
-                """, (journal_name,))
-            else:
-                # Partial match
-                cursor = conn.execute("""
-                    SELECT DISTINCT json_extract(metadata, '$.ISSN[0]') as issn
-                    FROM works
-                    WHERE json_extract(metadata, '$.container-title[0]') LIKE ?
-                    AND json_extract(metadata, '$.ISSN[0]') IS NOT NULL
-                    LIMIT 1
-                """, (f"%{journal_name}%",))
+        logger.warning(
+            "Using partial match for '%s' - results may be inaccurate",
+            journal_name,
+        )
+        partial = [
+            row
+            for row in rows
+            if target in (row.values.get("name_lower") or "")
+            and row.values.get("issn_l")
+        ]
+        if not partial:
+            return None
+        partial.sort(key=lambda row: _works_count(row.values), reverse=True)
+        best = partial[0].values
+        logger.warning("  Matched to: '%s'", best.get("name"))
+        return str(best.get("issn_l"))
 
-            result = cursor.fetchone()
-            return result[0] if result else None
+    def _get_issn_from_works(
+        self, journal_name: str, strict: bool = True
+    ) -> Optional[str]:
+        """Slow fallback: find an ISSN by scanning the works collection.
+
+        Reads every work. Only reached when the journal collection has
+        never been populated.
+        """
+        target = journal_name if strict else journal_name.lower()
+        for row in self._works_collection().rows():
+            values = row.values
+            container = values.get("container_title") or ""
+            issn = values.get("issn")
+            if not issn:
+                continue
+            if strict:
+                if container == target:
+                    return str(issn)
+            elif target in container.lower():
+                return str(issn)
+        return None
+
+    # -- search / metadata -----------------------------------------------
 
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """
         Search for journals by name.
 
         Args:
-            query: Search query (partial name match)
+            query: Search query (partial name match, case-insensitive)
             limit: Maximum results to return
 
         Returns:
-            List of journal info dictionaries with IF proxy
+            List of journal info dictionaries with IF proxy, most
+            prolific journals first. Empty when nothing matches — which is
+            also the answer when the journal collection has never been
+            populated.
         """
-        if not self._openalex_exists:
-            return []
+        needle = query.lower()
+        hits = [
+            row
+            for row in self._journals().rows()
+            if needle in (row.values.get("name_lower") or "")
+        ]
+        hits.sort(key=lambda row: _works_count(row.values), reverse=True)
 
-        with self._get_connection() as conn:
-            cursor = conn.execute("""
-                SELECT name, issn_l, publisher, works_count,
-                       two_year_mean_citedness, h_index
-                FROM journals_openalex
-                WHERE name_lower LIKE ?
-                ORDER BY works_count DESC
-                LIMIT ?
-            """, (f"%{query.lower()}%", limit))
-
-            return [
-                {
-                    "name": row["name"],
-                    "issn": row["issn_l"],
-                    "publisher": row["publisher"],
-                    "works_count": row["works_count"],
-                    "if_proxy": row["two_year_mean_citedness"],
-                    "h_index": row["h_index"]
-                }
-                for row in cursor.fetchall()
-            ]
+        return [
+            {
+                "name": row.values.get("name"),
+                "issn": row.values.get("issn_l"),
+                "publisher": row.values.get("publisher"),
+                "works_count": row.values.get("works_count"),
+                "if_proxy": row.values.get("two_year_mean_citedness"),
+                "h_index": row.values.get("h_index"),
+            }
+            for row in hits[:limit]
+        ]
 
     def get_info(self, issn: str) -> Optional[Dict]:
         """
         Get journal info by ISSN.
 
+        Tries the ISSN-L point read first — the only O(1) read the store
+        offers — and otherwise looks for a record whose ``issns`` list
+        carries this ISSN, which reads the whole collection.
+
         Args:
-            issn: Journal ISSN
+            issn: Journal ISSN (ISSN-L or any alternate)
 
         Returns:
             Journal info dictionary with IF proxy or None
         """
-        if not self._openalex_exists:
+        journals = self._journals()
+        row = journals.get({"issn_l": issn})
+
+        if row is None:
+            for candidate in journals.rows():
+                if issn in _issns_of(candidate.values):
+                    row = candidate
+                    break
+
+        if row is None:
             return None
 
-        with self._get_connection() as conn:
-            # Try direct ISSN-L match
-            cursor = conn.execute("""
-                SELECT name, issn_l, issns, publisher, works_count,
-                       two_year_mean_citedness, h_index, is_oa
-                FROM journals_openalex
-                WHERE issn_l = ?
-                LIMIT 1
-            """, (issn,))
+        values = row.values
+        issns = values.get("issns")
+        return {
+            "name": values.get("name"),
+            "issn": values.get("issn_l"),
+            "issns": list(issns) if isinstance(issns, list) else [],
+            "publisher": values.get("publisher"),
+            "works_count": values.get("works_count"),
+            "if_proxy": values.get("two_year_mean_citedness"),
+            "h_index": values.get("h_index"),
+            "is_oa": values.get("is_oa"),
+        }
 
-            row = cursor.fetchone()
-
-            # If not found, try issn_lookup table
-            if not row and self._issn_lookup_exists:
-                cursor = conn.execute("""
-                    SELECT jo.name, jo.issn_l, jo.issns, jo.publisher, jo.works_count,
-                           jo.two_year_mean_citedness, jo.h_index, jo.is_oa
-                    FROM issn_lookup il
-                    JOIN journals_openalex jo ON il.journal_id = jo.id
-                    WHERE il.issn = ?
-                    LIMIT 1
-                """, (issn,))
-                row = cursor.fetchone()
-
-            if row:
-                issns = []
-                if row["issns"]:
-                    try:
-                        issns = json.loads(row["issns"])
-                    except:
-                        pass
-                return {
-                    "name": row["name"],
-                    "issn": row["issn_l"],
-                    "issns": issns,
-                    "publisher": row["publisher"],
-                    "works_count": row["works_count"],
-                    "if_proxy": row["two_year_mean_citedness"],
-                    "h_index": row["h_index"],
-                    "is_oa": row["is_oa"]
-                }
-            return None
-
-    def get_if_proxy(self, journal_name: str, strict: bool = True) -> Optional[float]:
+    def get_if_proxy(
+        self, journal_name: str, strict: bool = True
+    ) -> Optional[float]:
         """
         Get OpenAlex Impact Factor proxy for a journal.
 
@@ -254,41 +250,101 @@ class JournalLookup:
         Returns:
             2-year mean citedness (IF proxy) or None
         """
-        if not self._openalex_exists:
+        rows = self._journals().rows()
+        target = journal_name.lower()
+
+        for row in rows:
+            if (row.values.get("name_lower") or "") == target:
+                proxy = row.values.get("two_year_mean_citedness")
+                if proxy:
+                    return proxy
+
+        if strict:
             return None
 
-        with self._get_connection() as conn:
-            # Try exact match
-            cursor = conn.execute("""
-                SELECT two_year_mean_citedness FROM journals_openalex
-                WHERE name_lower = ?
-                LIMIT 1
-            """, (journal_name.lower(),))
-
-            result = cursor.fetchone()
-            if result and result[0]:
-                return result[0]
-
-            if strict:
-                return None
-
-            # Try partial match (only if not strict)
-            cursor = conn.execute("""
-                SELECT two_year_mean_citedness FROM journals_openalex
-                WHERE name_lower LIKE ?
-                ORDER BY works_count DESC
-                LIMIT 1
-            """, (f"%{journal_name.lower()}%",))
-
-            result = cursor.fetchone()
-            return result[0] if result and result[0] else None
+        partial = [
+            row
+            for row in rows
+            if target in (row.values.get("name_lower") or "")
+            and row.values.get("two_year_mean_citedness")
+        ]
+        if not partial:
+            return None
+        partial.sort(key=lambda row: _works_count(row.values), reverse=True)
+        return partial[0].values.get("two_year_mean_citedness")
 
     def close(self):
-        """Close database connection (no-op, connections are per-query now)."""
-        pass
+        """Release nothing.
+
+        The stores this reads are owned by the thread, not by this object,
+        and other callers on the same thread share them. Closing here would
+        pull a connection out from under them. Use
+        :func:`crossref_local._core.store.close_stores` to release a
+        thread's stores.
+        """
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+# ---------------------------------------------------------------------------
+# ISSN -> impact-factor proxy, indexed once
+# ---------------------------------------------------------------------------
+# The HTTP server and the CLI both annotate search results with a journal's
+# IF proxy, and both used to run one lookup per ISSN. With no filtered read
+# that would be one full scan per ISSN, so the mapping is built in a single
+# pass and kept. It is a cache with the same staleness the per-ISSN caches
+# had before: a journal record written after the first lookup is not seen
+# until the process restarts.
+
+_IF_INDEX: Optional[Dict[str, Optional[float]]] = None
+
+
+def impact_factor_index(store=None) -> Dict[str, Optional[float]]:
+    """Map every known ISSN to its journal's 2-year mean citedness.
+
+    Args:
+        store: The journal collection. When given, a fresh index is built
+            and NOT cached — a caller that passes its own store is asking
+            about that store, and caching it would answer a later default
+            call with the wrong collection.
+    """
+    global _IF_INDEX
+
+    if store is None and _IF_INDEX is not None:
+        return _IF_INDEX
+
+    index: Dict[str, Optional[float]] = {}
+    source = store if store is not None else journals_store()
+    for row in source.rows():
+        values = row.values
+        proxy = values.get("two_year_mean_citedness")
+        for issn in _issns_of(values):
+            index.setdefault(issn, proxy)
+
+    if store is None:
+        _IF_INDEX = index
+    return index
+
+
+def impact_factor_for_issn(issn: str, store=None) -> Optional[float]:
+    """The IF proxy for one ISSN, or None when unknown.
+
+    Exact ISSN matching. The previous implementations compared the ISSN
+    against the serialised ``issns`` text with a wildcard, which also
+    matched a journal that merely contained the ISSN as a substring.
+    """
+    if not issn:
+        return None
+    try:
+        return impact_factor_index(store).get(issn)
+    except Exception:
+        # An unreachable or unpopulated journal collection means "unknown
+        # impact factor", not a failed search — the caller is annotating
+        # results it already has.
+        return None
+
+# EOF

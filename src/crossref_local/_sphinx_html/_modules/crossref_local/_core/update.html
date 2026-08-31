@@ -1,0 +1,248 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>crossref_local._core.update &mdash; CrossRef Local v0.5.0</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            CrossRef Local
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-pypi">Install from PyPI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#install-from-source">Install from Source</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#store-setup">Store Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#http-mode-no-local-store">HTTP Mode (No Local Store)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../installation.html#verify-installation">Verify Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#python-api">Python API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#basic-search">Basic Search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#get-by-doi">Get by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#http-mode">HTTP Mode</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#command-line-interface">Command Line Interface</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#search">Search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#id1">Get by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#http-relay-server">HTTP Relay Server</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../quickstart.html#mcp-server">MCP Server</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart.html#environment-variables">Environment Variables</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../cli_reference.html">CLI Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#global-options">Global Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#commands">Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#search">search</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#search-by-doi">search-by-doi</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#status">status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#relay">relay</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli_reference.html#mcp-commands">MCP Commands</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#mcp-start">mcp start</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#mcp-tools">mcp tools</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../cli_reference.html#list-apis">list-apis</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../http_api.html">HTTP API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#starting-the-server">Starting the Server</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#endpoints">Endpoints</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#root">Root</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#health-check">Health Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#store-info">Store Info</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#search-works">Search Works</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-work-by-doi">Get Work by DOI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#batch-lookup">Batch Lookup</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#citations">Citations</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-citing-papers">Get Citing Papers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#get-cited-papers">Get Cited Papers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-count">Citation Count</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../http_api.html#citation-network">Citation Network</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../http_api.html#query-syntax">Query Syntax</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/crossref_local.html">crossref_local API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#main-functions">Main Functions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.search"><code class="docutils literal notranslate"><span class="pre">search()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get"><code class="docutils literal notranslate"><span class="pre">get()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_many"><code class="docutils literal notranslate"><span class="pre">get_many()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.count"><code class="docutils literal notranslate"><span class="pre">count()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.exists"><code class="docutils literal notranslate"><span class="pre">exists()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_http"><code class="docutils literal notranslate"><span class="pre">configure_http()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.configure_remote"><code class="docutils literal notranslate"><span class="pre">configure_remote()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich"><code class="docutils literal notranslate"><span class="pre">enrich()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.enrich_dois"><code class="docutils literal notranslate"><span class="pre">enrich_dois()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.get_mode"><code class="docutils literal notranslate"><span class="pre">get_mode()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.info"><code class="docutils literal notranslate"><span class="pre">info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.refresh_stats"><code class="docutils literal notranslate"><span class="pre">refresh_stats()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#crossref_local.update"><code class="docutils literal notranslate"><span class="pre">update()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/crossref_local.html#data-classes">Data Classes</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#work">Work</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../api/crossref_local.html#searchresult">SearchResult</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">CrossRef Local</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">crossref_local._core.update</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for crossref_local._core.update</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">"""Incremental store update for crossref_local.</span>
+
+<span class="sd">Thin wrapper around :mod:`crossref_local._core.ingest`, so the CLI</span>
+<span class="sd">(``crossref-local update-db``) and the Python API (``crossref_local.update``)</span>
+<span class="sd">share one code path.</span>
+
+<span class="sd">The engine used to live under ``scripts/`` and be loaded by file path — this</span>
+<span class="sd">module resolved that path, checked it existed, and executed the file through</span>
+<span class="sd">``importlib``. None of that is needed now that the engine is an ordinary</span>
+<span class="sd">module: an import error names the module and the line, where a missing-file</span>
+<span class="sd">error named only a path and left the reader to guess which copy was meant.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span> <span class="k">as</span> <span class="n">_Optional</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.ingest</span><span class="w"> </span><span class="kn">import</span> <span class="n">differential_update</span> <span class="k">as</span> <span class="n">_differential_update</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"update"</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="update">
+<a class="viewcode-back" href="../../../api/crossref_local.html#crossref_local.update">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span>
+    <span class="n">since</span><span class="p">:</span> <span class="n">_Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Incrementally update the local CrossRef store.</span>
+
+<span class="sd">    Fetches only the works newer than the recorded watermark (or ``since``</span>
+<span class="sd">    when given) from the CrossRef REST API and upserts them.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    since : str, optional</span>
+<span class="sd">        Override start date (``YYYY-MM-DD``). Defaults to the recorded</span>
+<span class="sd">        ``last_sync_date``.</span>
+<span class="sd">    dry_run : bool</span>
+<span class="sd">        Preview only — count what would be upserted without writing.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict</span>
+<span class="sd">        Statistics from the ingest run: ``records_upserted``,</span>
+<span class="sd">        ``elapsed_seconds``, ``last_sync_date`` (and ``dry_run`` when</span>
+<span class="sd">        applicable).</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">_differential_update</span><span class="p">(</span><span class="n">since</span><span class="o">=</span><span class="n">since</span><span class="p">,</span> <span class="n">dry_run</span><span class="o">=</span><span class="n">dry_run</span><span class="p">)</span></div>
+
+
+<span class="c1"># EOF</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Yusuke Watanabe.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

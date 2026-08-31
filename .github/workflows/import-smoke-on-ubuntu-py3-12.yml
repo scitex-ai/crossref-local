@@ -1,11 +1,11 @@
 name: import-smoke
 
-# Catches "wheel installs but `import crossref_local` blows up at runtime"
-# — separate from the full pytest suite so a broken entry-point fails
-# fast without paying for the matrix. Companion to `tests` — confirms
-# the bare package (no extras) is `pip install -e .`-able and
-# `import crossref_local` succeeds. Catches `[project] dependencies`
-# drift that the test matrix masks because it installs `[all,dev]`.
+# PILOT: org-level reusable-workflow caller (scitex-ai/.github, 2026-07-10).
+# Same purpose as before (bare `pip install -e .` + `import crossref_local`
+# smoke check), now via scitex-ai/.github's import-smoke reusable workflow.
+# NOTE: runner/install now self-hosted spartan-cpu + uv (was ubuntu-latest
+# + venv/pip) — same infra-normalization note as pytest-matrix, see PR.
+# Triggers preserved verbatim from the prior local file.
 
 on:
   push:
@@ -17,18 +17,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  install-check:
-    name: import-smoke-on-ubuntu-py3-12
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install (no extras)
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -e .
-      - name: Import smoke
-        run: .venv/bin/python -c "import crossref_local; print(crossref_local.__version__)"
+  import-smoke:
+    # New required-status-check context: "import-smoke / import-smoke-on-ubuntu-py3-12"
+    uses: scitex-ai/.github/.github/workflows/import-smoke.yml@main
+    secrets: inherit

@@ -20,10 +20,9 @@ Async usage:
 Configuration
 -------------
 
-DB mode (direct database access):
-    >>> from crossref_local import configure
-    >>> configure("/path/to/crossref.db")
-    Or set CROSSREF_LOCAL_DB environment variable.
+DB mode (direct access to this host's shared store):
+    Nothing to configure. The store is resolved by
+    ``scitex_dev.store.host_store()``, which honours SCITEX_STORE_DSN.
 
 HTTP mode (API access via HTTP):
     >>> from crossref_local import configure_http
@@ -45,7 +44,6 @@ Functions:
     exists(doi) -> bool
     enrich(results) -> SearchResult
     enrich_dois(dois) -> list[Work]
-    configure(db_path) -> None
     configure_remote(api_url) -> None
     get_mode() -> str
     info() -> dict
@@ -122,11 +120,11 @@ from ._core import (
     exists,
     enrich,
     enrich_dois,
-    configure,
     configure_http,
     configure_remote,
     get_mode,
     info,
+    refresh_stats,
     # Models
     Work,
     SearchResult,
@@ -138,6 +136,8 @@ from ._core import (
     # Export
     save,
     SUPPORTED_FORMATS,
+    # Update (incremental refresh)
+    update,
 )
 
 # Checker
@@ -192,11 +192,11 @@ __all__ = [
     "enrich",
     "enrich_dois",
     # Configuration
-    "configure",
     "configure_http",
     "configure_remote",  # Backward compatibility alias
     "get_mode",
     "info",
+    "refresh_stats",
     # Data models
     "Work",
     "SearchResult",
@@ -214,6 +214,8 @@ __all__ = [
     # Export/Save
     "save",
     "SUPPORTED_FORMATS",
+    # Incremental database update
+    "update",
     # Citation checking
     "check_citations",
     "check_bibtex",
@@ -229,7 +231,7 @@ __all__ = [
 # These are exposed for advanced users but not part of the stable public API.
 # Use at your own risk - they may change without notice.
 #
-# from crossref_local.db import Database, connection
+# from crossref_local._core.store import works_store, WORKS
 # from crossref_local.config import Config
 # from crossref_local.remote import RemoteClient
 # from crossref_local.fts import search_dois

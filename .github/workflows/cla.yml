@@ -1,5 +1,51 @@
 name: CLA Assistant
 
+# PILOT: org-level reusable-workflow caller (scitex-ai/.github, 2026-07-10).
+# Triggers/permissions preserved verbatim from the prior local file.
+# Reusable workflow defaults (owner_login=ywatanabe1989,
+# owner_allowlist="bot*,ywatanabe1989", default_branch=main) already match
+# this repo's prior hardcoded values, so no `with:` overrides are needed
+# beyond the runner, which is named below on purpose.
+# NOTE: this repo's on: has no `push` trigger, so the reusable's
+# owner-bypass job (guarded by `if: github.event_name == 'push'`) never
+# fires here — same as before (this repo never had an owner-bypass job).
+#
+# SECRETS ARE MAPPED EXPLICITLY, NOT INHERITED (PS-224).
+# This job runs on `issue_comment` and `pull_request_target`, both of which
+# an outsider can trigger. `secrets: inherit` forwarded EVERY secret this
+# repo holds into it; the callee declares exactly one, `GH_PERSONAL_ACCESS_TOKEN`
+# (`required: true`), so the named form below is a strict subset — verified by
+# reading the callee rather than assumed.
+#
+# THE SECRET THIS READS DOES NOT EXIST YET, AND THAT IS DELIBERATE.
+# The callee reads `GH_PERSONAL_ACCESS_TOKEN`. Under `inherit` no name ever
+# met it, so the token arrived EMPTY and the action failed with "Branch
+# cla-signatures not found" — measured in run 33287904282, whose env line
+# reads `PERSONAL_ACCESS_TOKEN:` with nothing after it.
+#
+# The repo currently holds an UN-PREFIXED `PERSONAL_ACCESS_TOKEN`, and
+# pointing at that would satisfy the CLA action while violating PS-168:
+# `scitex-dev creds rotate-all` rotates a fixed set of CROSS-CUTTING secret
+# names, and an un-prefixed per-project name is indistinguishable from one
+# of those — rotate-all cannot tell whether to overwrite it or leave it
+# alone. So this names the prefixed form, which is also what this file
+# referenced before the org migration.
+#
+# ACTION REQUIRED (operator): create repo secret
+# `CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN` with the CLA-signature-storage PAT,
+# then delete the un-prefixed `PERSONAL_ACCESS_TOKEN`. Until then the CLA
+# check stays red — exactly as red as it is today, since the token already
+# resolves empty, so this is not a regression and the fix is one step.
+#
+# RUNNER IS NAMED HERE rather than left to the callee's default. The rule's
+# complaint is that with no `runs-on` in the caller the destination lives in
+# the callee, so neither file shows the exposure on its own. It is a JSON
+# ARRAY STRING because the callee feeds it to fromJSON; a YAML list decodes
+# to something fromJSON rejects, and the label mismatch makes the job QUEUE
+# FOREVER rather than fail. ubuntu-latest is ephemeral and disposable, which
+# is what an outsider-triggerable job should land on — the self-hosted pool
+# is persistent and shares a $HOME holding the live fleet credential.
+
 on:
   issue_comment:
     types: [created]
@@ -13,21 +59,9 @@ permissions:
   statuses: write
 
 jobs:
-  CLAssistant:
-    runs-on: ubuntu-latest
-    steps:
-      - name: CLA Assistant
-        uses: contributor-assistant/github-action@v2.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN }}
-        with:
-          path-to-signatures: "signatures/cla.json"
-          path-to-document: "https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md"
-          branch: "cla-signatures"
-          allowlist: bot*,ywatanabe1989
-          custom-allsigned-prcomment: |
-            Thank you for signing the SciTeX CLA. Your contribution can now be reviewed.
-          custom-notsigned-prcomment: |
-            Please sign the [SciTeX CLA](https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md) before your contribution can be merged.
-            Comment `I have read and agree to the SciTeX CLA.` to sign.
+  call:
+    uses: scitex-ai/.github/.github/workflows/cla.yml@main
+    with:
+      runs_on: '["ubuntu-latest"]'
+    secrets:
+      GH_PERSONAL_ACCESS_TOKEN: ${{ secrets.CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN }}

@@ -1,14 +1,14 @@
 ---
 description: |
   [TOPIC] HTTP API — crossref-local FastAPI server
-  [DETAILS] Standalone FastAPI app in `_server/` exposing search/get/citation/collection endpoints over the local CrossRef DB. Boot with `crossref-local serve` or `uvicorn crossref_local._server:app`.
+  [DETAILS] Standalone FastAPI app in `_server/` exposing search/get/citation/collection endpoints over this host's shared store. Boot with `crossref-local relay` or `uvicorn crossref_local._server:app`.
 tags: [crossref-local-http-api]
 ---
 
 # HTTP API — crossref-local
 
-The `crossref_local._server` package exposes the local CrossRef DB as a
-FastAPI service. Routers live alongside `__init__.py`:
+The `crossref_local._server` package exposes this host's CrossRef corpus as
+a FastAPI service. Routers live alongside `__init__.py`:
 
 - `routes_works.py` — work search + retrieval
 - `routes_citations.py` — citation graph queries
@@ -22,14 +22,14 @@ FastAPI service. Routers live alongside `__init__.py`:
 | Method | Path | Handler | Returns |
 |--------|------|---------|---------|
 | GET | `/` | root | API name, version, endpoint map |
-| GET | `/health` | health | DB connectivity + path |
-| GET | `/info` | info | DB statistics (work count, FTS state) |
+| GET | `/health` | health | Store reachability + a credential-free `store` name |
+| GET | `/info` | info | Cached corpus counts + `counts_source` |
 
 ### Works
 
 | Method | Path | Returns |
 |--------|------|---------|
-| GET | `/works?q=<query>` | `SearchResponse` — FTS5 search across the corpus |
+| GET | `/works?q=<query>` | `SearchResponse` — full-text search across the corpus (scan; see [14_search.md](14_search.md)) |
 | GET | `/works/{doi:path}` | `WorkResponse` (or null) — fetch by DOI |
 | POST | `/works/batch` | `BatchResponse` — bulk DOI lookup |
 
@@ -63,9 +63,9 @@ FastAPI service. Routers live alongside `__init__.py`:
 ## Boot
 
 ```bash
-crossref-local serve --host 0.0.0.0 --port 8765
+crossref-local relay --host 0.0.0.0 --port 31291
 # or
-uvicorn crossref_local._server:app --port 8765
+uvicorn crossref_local._server:app --port 31291
 ```
 
-See `13_configuration.md` for env vars (DB path, mode, relay).
+See `13_configuration.md` for env vars (store, mode, relay).
