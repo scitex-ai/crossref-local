@@ -1,41 +1,66 @@
-"""Shell completion commands for crossref-local CLI."""
+"""Shell completion drop-in for the crossref-local CLI.
 
+``crossref-local completion install`` writes a ready-to-source completion
+script to the fleet drop-in file::
+
+    $SCITEX_DIR/crossref-local/runtime/completion/crossref-local
+
+(``$SCITEX_DIR`` defaults to ``~/.scitex``), then prints that path. The
+install never touches shell rc files (``~/.bashrc``, ``~/.zshrc``);
+activate it by sourcing the printed path from your rc once::
+
+    echo 'source ~/.scitex/crossref-local/runtime/completion/crossref-local' >> ~/.bashrc
+"""
+
+import scitex_logging as slogging
 import os
-import sys
+import tempfile
 from pathlib import Path
 
 import click
+from click.shell_completion import BashComplete, FishComplete, ZshComplete
 
 PROG_NAME = "crossref-local"
 
-# Shell completion scripts
-BASH_COMPLETION = f"""# {PROG_NAME} bash completion
-eval "$(_CROSSREF_LOCAL_COMPLETE=bash_source {PROG_NAME})"
-"""
+logger = slogging.getLogger(__name__)
 
-ZSH_COMPLETION = f"""# {PROG_NAME} zsh completion
-eval "$(_CROSSREF_LOCAL_COMPLETE=zsh_source {PROG_NAME})"
-"""
+_COMPLETE_VAR = "_" + PROG_NAME.upper().replace("-", "_") + "_COMPLETE"
 
-FISH_COMPLETION = f"""# {PROG_NAME} fish completion
-_CROSSREF_LOCAL_COMPLETE=fish_source {PROG_NAME} | source
-"""
-
-# Shell config files
-SHELL_CONFIGS = {
-    "bash": [Path.home() / ".bashrc", Path.home() / ".bash_profile"],
-    "zsh": [Path.home() / ".zshrc"],
-    "fish": [Path.home() / ".config" / "fish" / "config.fish"],
+_COMPLETION_CLASSES = {
+    "bash": BashComplete,
+    "zsh": ZshComplete,
+    "fish": FishComplete,
 }
 
-COMPLETION_SCRIPTS = {
-    "bash": BASH_COMPLETION,
-    "zsh": ZSH_COMPLETION,
-    "fish": FISH_COMPLETION,
-}
+_VALID_SHELLS = tuple(_COMPLETION_CLASSES)
 
-COMPLETION_MARKER = f"# >>> {PROG_NAME} completion >>>"
-COMPLETION_END_MARKER = f"# <<< {PROG_NAME} completion <<<"
+
+def _pkg_short(prog_name: str = PROG_NAME) -> str:
+    """Strip a leading ``scitex-`` prefix (fleet path convention)."""
+    if prog_name.startswith("scitex-"):
+        return prog_name[len("scitex-") :]
+    return prog_name
+
+
+def _scitex_dir() -> Path:
+    """Resolve ``$SCITEX_DIR`` (default ``~/.scitex``), read at call time."""
+    return Path(os.environ.get("SCITEX_DIR", os.path.expanduser("~/.scitex")))
+
+
+def dropin_path(prog_name: str = PROG_NAME) -> Path:
+    """Return the drop-in file path (honours ``$SCITEX_DIR`` and ``$HOME``)."""
+    return (
+        _scitex_dir() / _pkg_short(prog_name) / "runtime" / "completion" / prog_name
+    )
+
+
+def _script_for_shell(shell: str, prog_name: str = PROG_NAME) -> str:
+    """Render the click completion script for ``shell`` in-process."""
+    try:
+        complete_cls = _COMPLETION_CLASSES[shell]
+    except KeyError:
+        raise ValueError(f"Unsupported shell: {shell}") from None
+    return complete_cls(None, {}, prog_name, _COMPLETE_VAR).source()
 
 
 def _detect_shell() -> str:
@@ -43,106 +68,56 @@ def _detect_shell() -> str:
     shell_path = os.environ.get("SHELL", "")
     shell_name = Path(shell_path).name if shell_path else ""
 
-    if shell_name in ("bash", "zsh", "fish"):
+    if shell_name in _COMPLETION_CLASSES:
         return shell_name
 
     # Fallback to bash
     return "bash"
 
 
-def _get_config_file(
-    shell: str, *, configs: dict[str, list[Path]] | None = None
-) -> Path | None:
-    """Get the appropriate config file for the shell.
+def _is_installed(prog_name: str = PROG_NAME) -> tuple[bool, Path]:
+    """Check whether the drop-in file exists. Returns (installed, path)."""
+    path = dropin_path(prog_name)
+    return path.is_file(), path
 
-    The ``configs`` keyword arg is a DI seam: production callers leave
-    it ``None`` (we fall back to the module-level ``SHELL_CONFIGS``);
-    tests pass a dict pointing at real files under ``tmp_path``.
+
+def _install_completion(shell: str, prog_name: str = PROG_NAME) -> Path:
+    """Write (or refresh) the drop-in file atomically. Returns its path.
+
+    The write goes to a temp file in the same directory followed by
+    :func:`os.replace`, so readers never see a half-written script.
+    Re-installing for the same shell yields byte-identical content.
     """
-    if configs is None:
-        configs = SHELL_CONFIGS
-    candidates = configs.get(shell, [])
-    for config in candidates:
-        if config.exists():
-            return config
-    # Return first option for creation
-    return candidates[0] if candidates else None
+    script = _script_for_shell(shell, prog_name)
+    path = dropin_path(prog_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(script)
+            if not script.endswith("\n"):
+                f.write("\n")
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    logger.debug("Wrote completion drop-in for shell %s to %s", shell, path)
+    return path
 
 
-def _is_installed(
-    shell: str, *, configs: dict[str, list[Path]] | None = None
-) -> tuple[bool, Path | None]:
-    """Check if completion is already installed for a shell."""
-    if configs is None:
-        configs = SHELL_CONFIGS
-    candidates = configs.get(shell, [])
-    for config in candidates:
-        if config.exists():
-            content = config.read_text()
-            if COMPLETION_MARKER in content:
-                return True, config
-    return False, None
-
-
-def _install_completion(
-    shell: str, *, configs: dict[str, list[Path]] | None = None
-) -> tuple[bool, str]:
-    """Install completion for a shell. Returns (success, message)."""
-    installed, existing_file = _is_installed(shell, configs=configs)
-    if installed:
-        return True, f"Already installed in {existing_file}"
-
-    config_file = _get_config_file(shell, configs=configs)
-    if config_file is None:
-        return False, f"Could not find config file for {shell}"
-
-    script = COMPLETION_SCRIPTS.get(shell)
-    if script is None:
-        return False, f"Unsupported shell: {shell}"
-
-    # Create parent directory if needed (for fish)
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Append completion to config file
-    completion_block = f"\n{COMPLETION_MARKER}\n{script}{COMPLETION_END_MARKER}\n"
-
-    with open(config_file, "a") as f:
-        f.write(completion_block)
-
-    return True, f"Installed to {config_file}"
-
-
-def _uninstall_completion(
-    shell: str, *, configs: dict[str, list[Path]] | None = None
-) -> tuple[bool, str]:
-    """Uninstall completion for a shell. Returns (success, message)."""
-    installed, config_file = _is_installed(shell, configs=configs)
-    if not installed:
-        return True, f"Not installed for {shell}"
-
-    if config_file is None:
-        return False, f"Could not find config file for {shell}"
-
-    content = config_file.read_text()
-
-    # Remove the completion block
-    start_idx = content.find(COMPLETION_MARKER)
-    end_idx = content.find(COMPLETION_END_MARKER)
-
-    if start_idx == -1 or end_idx == -1:
-        return False, "Could not find completion block to remove"
-
-    # Include the newline before marker and after end marker
-    if start_idx > 0 and content[start_idx - 1] == "\n":
-        start_idx -= 1
-    end_idx = end_idx + len(COMPLETION_END_MARKER)
-    if end_idx < len(content) and content[end_idx] == "\n":
-        end_idx += 1
-
-    new_content = content[:start_idx] + content[end_idx:]
-    config_file.write_text(new_content)
-
-    return True, f"Removed from {config_file}"
+def _uninstall_completion(prog_name: str = PROG_NAME) -> bool:
+    """Remove the drop-in file. Returns True when a file was removed."""
+    path = dropin_path(prog_name)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return False
+    logger.debug("Removed completion drop-in at %s", path)
+    return True
 
 
 @click.group("completion", invoke_without_command=True)
@@ -151,29 +126,25 @@ def completion(ctx):
     """Shell completion commands.
 
     \b
-    Install shell tab-completion for crossref-local CLI.
-    Running without subcommand auto-installs for detected shell.
+    Writes a ready-to-source completion script to the drop-in file
+    (~/.scitex/crossref-local/runtime/completion/crossref-local)
+    without touching your shell rc files. Running without a
+    subcommand auto-installs for the detected shell.
 
     \b
     Examples:
-      crossref-local completion          # Auto-install for current shell
-      crossref-local completion status   # Check installation status
-      crossref-local completion bash     # Show bash completion script
+      crossref-local completion install --shell bash   # Write the drop-in file
+      crossref-local completion status                 # Check the drop-in file
+      crossref-local completion bash                   # Show bash completion script
     """
     if ctx.invoked_subcommand is None:
         # Auto-install for detected shell
         shell = _detect_shell()
         click.echo(f"Detected shell: {shell}")
 
-        success, message = _install_completion(shell)
-        if success:
-            click.echo(f"[OK] {message}")
-            click.echo(
-                f"\nRestart your shell or run: source ~/{_get_config_file(shell).name}"
-            )
-        else:
-            click.echo(f"[ERROR] {message}", err=True)
-            sys.exit(1)
+        path = _install_completion(shell)
+        click.echo(f"[OK] Completion written to {path}")
+        click.echo(f"\nActivate it with: source {path}")
 
 
 @completion.command("install")
@@ -183,78 +154,71 @@ def completion(ctx):
     default=None,
     help="Shell to install completion for (default: auto-detect)",
 )
-def install_cmd(shell: str | None):
-    """Install completion to shell config file."""
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Proceed without prompting (install is non-interactive).",
+)
+def install_cmd(shell: str | None, yes: bool):
+    """Write the completion drop-in file and print its path."""
+    del yes  # accepted for scripted use; install never prompts
     if shell is None:
         shell = _detect_shell()
         click.echo(f"Detected shell: {shell}")
 
-    success, message = _install_completion(shell)
-    if success:
-        click.echo(f"[OK] {message}")
-        config_file = _get_config_file(shell)
-        if config_file:
-            click.echo(f"\nRestart your shell or run: source {config_file}")
-    else:
-        click.echo(f"[ERROR] {message}", err=True)
-        sys.exit(1)
+    path = _install_completion(shell)
+    click.echo(f"[OK] Completion written to {path}")
+    click.echo(f"\nActivate it with: source {path}")
 
 
 @completion.command("uninstall")
-@click.option(
-    "--shell",
-    type=click.Choice(["bash", "zsh", "fish"]),
-    default=None,
-    help="Shell to uninstall completion from (default: auto-detect)",
-)
-def uninstall_cmd(shell: str | None):
-    """Remove completion from shell config file."""
-    if shell is None:
-        shell = _detect_shell()
-        click.echo(f"Detected shell: {shell}")
-
-    success, message = _uninstall_completion(shell)
-    if success:
-        click.echo(f"[OK] {message}")
+def uninstall_cmd():
+    """Remove the completion drop-in file."""
+    removed = _uninstall_completion()
+    path = dropin_path()
+    if removed:
+        click.echo(f"[OK] Removed {path}")
     else:
-        click.echo(f"[ERROR] {message}", err=True)
-        sys.exit(1)
+        click.echo(f"Not installed (no drop-in file at {path})")
 
 
 @completion.command("status")
 def status_cmd():
-    """Check completion installation status for all shells."""
+    """Check the completion drop-in file status."""
+    installed, path = _is_installed()
+    current_shell = _detect_shell()
+
     click.echo(f"{PROG_NAME} Shell Completion Status")
     click.echo("=" * 40)
-
-    current_shell = _detect_shell()
     click.echo(f"Current shell: {current_shell}")
+    click.echo(f"Drop-in file: {path}")
     click.echo()
-
-    for shell in ["bash", "zsh", "fish"]:
-        installed, config_file = _is_installed(shell)
-        marker = "[x]" if installed else "[ ]"
-        location = f" ({config_file})" if installed and config_file else ""
-        current = " (current)" if shell == current_shell else ""
-        click.echo(f"  {marker} {shell}{current}{location}")
+    if installed:
+        click.echo(f"  [x] installed ({path.stat().st_size} bytes)")
+        click.echo(f"\nActivate it with: source {path}")
+    else:
+        click.echo("  [ ] not installed")
+        click.echo(f"\nInstall it with: {PROG_NAME} completion install")
 
 
 @completion.command("bash")
 def bash_cmd():
     """Show bash completion script."""
-    click.echo(BASH_COMPLETION.strip())
+    click.echo(_script_for_shell("bash").strip())
 
 
 @completion.command("zsh")
 def zsh_cmd():
     """Show zsh completion script."""
-    click.echo(ZSH_COMPLETION.strip())
+    click.echo(_script_for_shell("zsh").strip())
 
 
 @completion.command("fish")
 def fish_cmd():
     """Show fish completion script."""
-    click.echo(FISH_COMPLETION.strip())
+    click.echo(_script_for_shell("fish").strip())
 
 
 def register_completion_commands(cli_group):

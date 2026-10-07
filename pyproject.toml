@@ -48,6 +48,7 @@ dependencies = [
     # The PostgreSQL driver arrives with it — psycopg is a core dependency
     # of scitex-dev, not an extra — so it is deliberately not repeated here.
     "scitex-dev>=0.57.0",
+    "scitex-logging>=0.2.2",
 ]
 
 [project.optional-dependencies]

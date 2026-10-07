@@ -477,6 +477,16 @@ except ImportError:
     pass
 
 
+# Fleet completion drop-in contract v1: `completion install` writes the
+# drop-in file $SCITEX_DIR/crossref-local/runtime/completion/crossref-local
+# atomically and never touches shell rc files. Registered after
+# attach_shell_completion so this real `completion` group wins over that
+# helper's hidden deprecated `completion` stub.
+from .completion import register_completion_commands as _register_completion_dropin
+
+_register_completion_dropin(cli)
+
+
 def main():
     """Entry point for CLI."""
     cli()

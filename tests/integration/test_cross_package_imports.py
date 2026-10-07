@@ -31,6 +31,8 @@ CROSS_PACKAGE_IMPORTS = [
     # The corpus lives in the shared store primitive; this is now a
     # first-class runtime dependency of _core/store.py.
     "scitex_dev.store",
+    # SciTeX logging tier (PS-220); used by _cli/completion.py.
+    "scitex_logging",
 ]
 
 

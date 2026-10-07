@@ -1,27 +1,29 @@
-"""Tests for shell completion commands.
+"""Tests for the completion drop-in contract v1.
 
-No mocks: ``$SHELL`` is managed by a yield-based env save/restore
-fixture, and ``SHELL_CONFIGS`` is replaced by an explicit ``configs=``
-DI seam on the production helpers — tests pass a dict whose values
-are real ``tmp_path`` files.
+``crossref-local completion install`` writes the drop-in file
+``$SCITEX_DIR/crossref-local/runtime/completion/crossref-local``
+atomically and never touches shell rc files. Install-behaviour tests run
+under an isolated temp ``HOME`` (with ``SCITEX_DIR`` unset) so the real
+``~/.bashrc`` and ``~/.scitex`` are never touched. No mocks: ``$SHELL``,
+``$HOME`` and ``$SCITEX_DIR`` are managed via yield-based save/restore
+fixtures (the rule-sanctioned replacement for ``monkeypatch``).
 """
 
 import os
-from pathlib import Path
+from pathlib import Path as _Path
 
 import pytest
 from click.testing import CliRunner
 
 from crossref_local._cli.completion import (
-    BASH_COMPLETION,
-    COMPLETION_END_MARKER,
-    COMPLETION_MARKER,
+    PROG_NAME,
     _detect_shell,
-    _get_config_file,
     _install_completion,
     _is_installed,
+    _script_for_shell,
     _uninstall_completion,
     completion,
+    dropin_path,
 )
 
 
@@ -32,24 +34,9 @@ def runner():
 
 
 @pytest.fixture
-def temp_home(tmp_path):
-    """Create a temporary home directory with shell config files."""
-    bashrc = tmp_path / ".bashrc"
-    bashrc.touch()
-    zshrc = tmp_path / ".zshrc"
-    zshrc.touch()
-    fish_config = tmp_path / ".config" / "fish" / "config.fish"
-    fish_config.parent.mkdir(parents=True)
-    fish_config.touch()
-    return tmp_path
-
-
-@pytest.fixture
 def shell_env():
-    """Yield-based env save/restore for ``$SHELL``."""
-
+    """Yield-based save/restore for ``$SHELL``; yields a setter."""
     saved = os.environ.get("SHELL")
-    had_saved = "SHELL" in os.environ
 
     def setter(value: str | None) -> None:
         if value is None:
@@ -60,10 +47,47 @@ def shell_env():
     try:
         yield setter
     finally:
-        if had_saved:
-            os.environ["SHELL"] = saved  # type: ignore[arg-type]
-        else:
+        if saved is None:
             os.environ.pop("SHELL", None)
+        else:
+            os.environ["SHELL"] = saved
+
+
+@pytest.fixture
+def isolated_home(tmp_path):
+    """Point ``$HOME`` at a tmp dir and unset ``$SCITEX_DIR``."""
+    saved_home = os.environ.get("HOME")
+    saved_scitex_dir = os.environ.get("SCITEX_DIR")
+    os.environ["HOME"] = str(tmp_path)
+    os.environ.pop("SCITEX_DIR", None)
+    try:
+        yield tmp_path
+    finally:
+        if saved_home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = saved_home
+        if saved_scitex_dir is None:
+            os.environ.pop("SCITEX_DIR", None)
+        else:
+            os.environ["SCITEX_DIR"] = saved_scitex_dir
+
+
+@pytest.fixture
+def scitex_dir_env():
+    """Yield-based save/restore for ``$SCITEX_DIR``; yields a setter."""
+    saved = os.environ.get("SCITEX_DIR")
+
+    def setter(value: str) -> None:
+        os.environ["SCITEX_DIR"] = value
+
+    try:
+        yield setter
+    finally:
+        if saved is None:
+            os.environ.pop("SCITEX_DIR", None)
+        else:
+            os.environ["SCITEX_DIR"] = saved
 
 
 # ---------- _detect_shell ----------
@@ -114,6 +138,219 @@ def test_detect_shell_falls_back_to_bash_when_env_unset(shell_env):
     assert detected == "bash"
 
 
+# ---------- drop-in path ----------
+
+
+def test_dropin_path_defaults_under_home_scitex(isolated_home):
+    # Arrange
+    expected = (
+        isolated_home
+        / ".scitex"
+        / "crossref-local"
+        / "runtime"
+        / "completion"
+        / PROG_NAME
+    )
+    # Act
+    path = dropin_path()
+    # Assert
+    assert path == expected
+
+
+def test_dropin_path_honours_scitex_dir(tmp_path, scitex_dir_env):
+    # Arrange
+    scitex_dir_env(str(tmp_path / "custom"))
+    expected = (
+        tmp_path / "custom" / "crossref-local" / "runtime" / "completion" / PROG_NAME
+    )
+    # Act
+    path = dropin_path()
+    # Assert
+    assert path == expected
+
+
+# ---------- _script_for_shell ----------
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
+def test_script_for_shell_emits_nonempty_script(shell):
+    # Arrange
+    # Act
+    script = _script_for_shell(shell)
+    # Assert
+    assert len(script.strip()) > 0
+
+
+def test_script_for_bash_references_complete_var():
+    # Arrange
+    # Act
+    script = _script_for_shell("bash")
+    # Assert
+    assert "CROSSREF_LOCAL_COMPLETE" in script
+
+
+def test_script_for_bash_references_prog_name():
+    # Arrange
+    # Act
+    script = _script_for_shell("bash")
+    # Assert
+    assert PROG_NAME in script
+
+
+def test_script_for_unknown_shell_raises_value_error():
+    # Arrange
+    shell = "unknown_shell"
+    # Act
+    ctx = pytest.raises(ValueError, match="Unsupported shell")
+    # Assert
+    with ctx:
+        _script_for_shell(shell)
+
+
+# ---------- _install_completion (isolated HOME) ----------
+
+
+def test_install_completion_writes_dropin_file(isolated_home):
+    # Arrange
+    # Act
+    path = _install_completion("bash")
+    # Assert
+    assert path.is_file()
+
+
+def test_install_completion_returns_dropin_path(isolated_home):
+    # Arrange
+    # Act
+    path = _install_completion("bash")
+    # Assert
+    assert path == dropin_path()
+
+
+def test_install_completion_file_holds_bash_script(isolated_home):
+    # Arrange
+    # Act
+    path = _install_completion("bash")
+    # Assert
+    assert "CROSSREF_LOCAL_COMPLETE" in path.read_text()
+
+
+def test_install_completion_rerun_returns_same_path(isolated_home):
+    # Arrange
+    first = _install_completion("bash")
+    # Act
+    second = _install_completion("bash")
+    # Assert
+    assert second == first
+
+
+def test_install_completion_rerun_keeps_bytes_identical(isolated_home):
+    # Arrange
+    path = _install_completion("bash")
+    before = path.read_bytes()
+    # Act
+    _install_completion("bash")
+    # Assert
+    assert path.read_bytes() == before
+
+
+def test_install_completion_leaves_no_temp_files(isolated_home):
+    # Arrange
+    # Act
+    _install_completion("bash")
+    leftovers = list(dropin_path().parent.glob(f"{PROG_NAME}.*"))
+    # Assert
+    assert leftovers == []
+
+
+def test_install_completion_does_not_touch_bashrc(isolated_home):
+    # Arrange
+    # Act
+    _install_completion("bash")
+    # Assert
+    assert not (isolated_home / ".bashrc").exists()
+
+
+def test_install_completion_does_not_touch_zshrc(isolated_home):
+    # Arrange
+    # Act
+    _install_completion("bash")
+    # Assert
+    assert not (isolated_home / ".zshrc").exists()
+
+
+def test_install_completion_rejects_unknown_shell(isolated_home):
+    # Arrange
+    shell = "unknown_shell"
+    # Act
+    ctx = pytest.raises(ValueError, match="Unsupported shell")
+    # Assert
+    with ctx:
+        _install_completion(shell)
+
+
+# ---------- _is_installed / _uninstall_completion ----------
+
+
+def test_is_installed_returns_false_before_install(isolated_home):
+    # Arrange
+    # Act
+    installed, _path = _is_installed()
+    # Assert
+    assert installed is False
+
+
+def test_is_installed_path_matches_dropin_before_install(isolated_home):
+    # Arrange
+    # Act
+    _installed, path = _is_installed()
+    # Assert
+    assert path == dropin_path()
+
+
+def test_is_installed_returns_true_after_install(isolated_home):
+    # Arrange
+    _install_completion("bash")
+    # Act
+    installed, _path = _is_installed()
+    # Assert
+    assert installed is True
+
+
+def test_is_installed_path_matches_dropin_after_install(isolated_home):
+    # Arrange
+    _install_completion("bash")
+    # Act
+    _installed, path = _is_installed()
+    # Assert
+    assert path == dropin_path()
+
+
+def test_uninstall_completion_reports_true_when_present(isolated_home):
+    # Arrange
+    _install_completion("bash")
+    # Act
+    removed = _uninstall_completion()
+    # Assert
+    assert removed is True
+
+
+def test_uninstall_completion_leaves_no_dropin_file(isolated_home):
+    # Arrange
+    _install_completion("bash")
+    # Act
+    _uninstall_completion()
+    # Assert
+    assert not dropin_path().exists()
+
+
+def test_uninstall_completion_reports_false_when_absent(isolated_home):
+    # Arrange
+    # Act
+    removed = _uninstall_completion()
+    # Assert
+    assert removed is False
+
+
 # ---------- completion CLI surface ----------
 
 
@@ -153,237 +390,267 @@ def test_completion_help_mentions_fish_subcommand(runner):
     assert "fish" in result.output
 
 
-def test_completion_status_lists_bash_shell(runner):
+def test_completion_help_references_dropin_file(runner):
+    # Arrange
+    args = ["--help"]
+    # Act
+    result = runner.invoke(completion, args)
+    # Assert
+    assert "runtime/completion" in result.output
+
+
+def test_completion_install_exits_zero(runner, isolated_home, shell_env):
+    # Arrange
+    shell_env("/bin/bash")
+    # Act
+    result = runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_install_prints_dropin_path(runner, isolated_home, shell_env):
+    # Arrange
+    shell_env("/bin/bash")
+    # Act
+    result = runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert str(dropin_path()) in result.output
+
+
+def test_completion_install_writes_dropin_file(runner, isolated_home, shell_env):
+    # Arrange
+    shell_env("/bin/bash")
+    # Act
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert dropin_path().is_file()
+
+
+def test_completion_install_short_yes_flag_exits_zero(runner, isolated_home):
+    # Arrange
+    # Act
+    result = runner.invoke(completion, ["install", "--shell", "bash", "-y"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_install_short_yes_flag_writes_dropin(runner, isolated_home):
+    # Arrange
+    # Act
+    runner.invoke(completion, ["install", "--shell", "bash", "-y"])
+    # Assert
+    assert dropin_path().is_file()
+
+
+def test_completion_install_without_rc_touch_exits_zero(runner, isolated_home):
+    # Arrange
+    # Act
+    result = runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_install_leaves_bashrc_untouched(runner, isolated_home):
+    # Arrange
+    # Act
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert not (isolated_home / ".bashrc").exists()
+
+
+def test_completion_install_leaves_zshrc_untouched(runner, isolated_home):
+    # Arrange
+    # Act
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert not (isolated_home / ".zshrc").exists()
+
+
+def test_completion_install_rerun_exits_zero(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Act
+    result = runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_install_rerun_keeps_bytes_identical(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    before = dropin_path().read_bytes()
+    # Act
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Assert
+    assert dropin_path().read_bytes() == before
+
+
+def test_completion_status_exits_zero_when_missing(runner, isolated_home):
     # Arrange
     args = ["status"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "bash" in result.output
+    assert result.exit_code == 0
 
 
-def test_completion_status_lists_zsh_shell(runner):
+def test_completion_status_prints_dropin_path_when_missing(runner, isolated_home):
     # Arrange
     args = ["status"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "zsh" in result.output
+    assert str(dropin_path()) in result.output
 
 
-def test_completion_status_lists_fish_shell(runner):
+def test_completion_status_reports_not_installed_when_missing(runner, isolated_home):
     # Arrange
     args = ["status"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "fish" in result.output
+    assert "not installed" in result.output
 
 
-def test_completion_bash_subcommand_emits_bash_source_env(runner):
+def test_completion_status_exits_zero_after_install(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Act
+    result = runner.invoke(completion, ["status"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_status_reports_installed_after_install(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Act
+    result = runner.invoke(completion, ["status"])
+    # Assert
+    assert "installed" in result.output
+
+
+def test_completion_uninstall_exits_zero(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Act
+    result = runner.invoke(completion, ["uninstall"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_uninstall_removes_dropin_file(runner, isolated_home):
+    # Arrange
+    runner.invoke(completion, ["install", "--shell", "bash", "--yes"])
+    # Act
+    runner.invoke(completion, ["uninstall"])
+    # Assert
+    assert not dropin_path().exists()
+
+
+def test_completion_uninstall_exits_zero_when_absent(runner, isolated_home):
+    # Arrange
+    # Act
+    result = runner.invoke(completion, ["uninstall"])
+    # Assert
+    assert result.exit_code == 0
+
+
+def test_completion_uninstall_reports_not_installed_when_absent(runner, isolated_home):
+    # Arrange
+    # Act
+    result = runner.invoke(completion, ["uninstall"])
+    # Assert
+    assert "Not installed" in result.output
+
+
+def test_completion_bash_subcommand_emits_complete_var(runner):
     # Arrange
     args = ["bash"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "CROSSREF_LOCAL_COMPLETE=bash_source" in result.output
+    assert "CROSSREF_LOCAL_COMPLETE" in result.output
 
 
-def test_completion_zsh_subcommand_emits_zsh_source_env(runner):
+def test_completion_zsh_subcommand_emits_complete_var(runner):
     # Arrange
     args = ["zsh"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "CROSSREF_LOCAL_COMPLETE=zsh_source" in result.output
+    assert "CROSSREF_LOCAL_COMPLETE" in result.output
 
 
-def test_completion_fish_subcommand_emits_fish_source_env(runner):
+def test_completion_fish_subcommand_emits_complete_var(runner):
     # Arrange
     args = ["fish"]
     # Act
     result = runner.invoke(completion, args)
     # Assert
-    assert "CROSSREF_LOCAL_COMPLETE=fish_source" in result.output
+    assert "CROSSREF_LOCAL_COMPLETE" in result.output
 
 
-# ---------- _install_completion ----------
+def test_completion_group_wired_on_main_cli(isolated_home):
+    # Arrange (import here: pulls the full CLI tree)
+    import click
 
+    from crossref_local._cli.cli import cli
 
-def test_install_completion_returns_success_for_fresh_bashrc(temp_home):
-    # Arrange
-    configs = {"bash": [temp_home / ".bashrc"]}
     # Act
-    success, _ = _install_completion("bash", configs=configs)
+    command = cli.get_command(click.Context(cli), "completion")
     # Assert
-    assert success is True
+    assert isinstance(command, click.Group)
 
 
-def test_install_completion_writes_completion_marker_into_bashrc(temp_home):
-    # Arrange
-    configs = {"bash": [temp_home / ".bashrc"]}
+def test_completion_group_registers_install_subcommand(isolated_home):
+    # Arrange (import here: pulls the full CLI tree)
+    import click
+
+    from crossref_local._cli.cli import cli
+
     # Act
-    _install_completion("bash", configs=configs)
-    content = (temp_home / ".bashrc").read_text()
+    command = cli.get_command(click.Context(cli), "completion")
     # Assert
-    assert COMPLETION_MARKER in content
+    assert "install" in command.commands
 
 
-def test_install_completion_writes_end_marker_into_bashrc(temp_home):
+def test_completion_source_has_no_shell_configs_table():
     # Arrange
-    configs = {"bash": [temp_home / ".bashrc"]}
+    import crossref_local._cli.completion as completion_module
+
     # Act
-    _install_completion("bash", configs=configs)
-    content = (temp_home / ".bashrc").read_text()
+    source = _Path(completion_module.__file__).read_text()
     # Assert
-    assert COMPLETION_END_MARKER in content
+    assert "SHELL_CONFIGS" not in source
 
 
-def test_install_completion_writes_bash_eval_into_bashrc(temp_home):
+def test_completion_source_has_no_completion_marker():
     # Arrange
-    configs = {"bash": [temp_home / ".bashrc"]}
+    import crossref_local._cli.completion as completion_module
+
     # Act
-    _install_completion("bash", configs=configs)
-    content = (temp_home / ".bashrc").read_text()
+    source = _Path(completion_module.__file__).read_text()
     # Assert
-    assert "CROSSREF_LOCAL_COMPLETE=bash_source" in content
+    assert "COMPLETION_MARKER" not in source
 
 
-def test_install_completion_reports_already_installed_when_marker_present(
-    temp_home,
-):
+def test_completion_source_references_no_fish_config():
     # Arrange
-    bashrc = temp_home / ".bashrc"
-    bashrc.write_text(f"{COMPLETION_MARKER}\ntest\n{COMPLETION_END_MARKER}\n")
-    configs = {"bash": [bashrc]}
+    import crossref_local._cli.completion as completion_module
+
     # Act
-    _, message = _install_completion("bash", configs=configs)
+    source = _Path(completion_module.__file__).read_text()
     # Assert
-    assert "Already installed" in message
+    assert "config.fish" not in source
 
 
-def test_install_completion_returns_failure_for_unknown_shell():
+def test_completion_source_contains_no_print_calls():
     # Arrange
-    configs: dict[str, list[Path]] = {}
+    import crossref_local._cli.completion as completion_module
+
     # Act
-    success, _ = _install_completion("unknown_shell", configs=configs)
-    # Assert
-    assert success is False
-
-
-def test_install_completion_failure_message_describes_missing_config():
-    # Arrange
-    configs: dict[str, list[Path]] = {}
-    # Act
-    _, message = _install_completion("unknown_shell", configs=configs)
-    # Assert
-    assert "Could not find config file" in message
-
-
-# ---------- _uninstall_completion ----------
-
-
-def test_uninstall_completion_succeeds_when_block_present(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    original = "# existing content\n"
-    block = f"\n{COMPLETION_MARKER}\n{BASH_COMPLETION}{COMPLETION_END_MARKER}\n"
-    bashrc.write_text(original + block + "# after\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    success, _ = _uninstall_completion("bash", configs=configs)
-    # Assert
-    assert success is True
-
-
-def test_uninstall_completion_removes_marker_from_bashrc(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    block = f"\n{COMPLETION_MARKER}\n{BASH_COMPLETION}{COMPLETION_END_MARKER}\n"
-    bashrc.write_text("# existing content\n" + block + "# after\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    _uninstall_completion("bash", configs=configs)
-    # Assert
-    assert COMPLETION_MARKER not in bashrc.read_text()
-
-
-def test_uninstall_completion_preserves_user_content_around_block(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    block = f"\n{COMPLETION_MARKER}\n{BASH_COMPLETION}{COMPLETION_END_MARKER}\n"
-    bashrc.write_text("# existing content\n" + block + "# after\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    _uninstall_completion("bash", configs=configs)
-    # Assert
-    assert "# existing content" in bashrc.read_text()
-
-
-def test_uninstall_completion_reports_not_installed_when_marker_absent(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    bashrc.write_text("# no completion installed\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    _, message = _uninstall_completion("bash", configs=configs)
-    # Assert
-    assert "Not installed" in message
-
-
-# ---------- _is_installed ----------
-
-
-def test_is_installed_returns_true_when_marker_present(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    bashrc.write_text(f"{COMPLETION_MARKER}\ntest\n{COMPLETION_END_MARKER}\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    installed, _ = _is_installed("bash", configs=configs)
-    # Assert
-    assert installed is True
-
-
-def test_is_installed_returns_matching_config_file_when_marker_present(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    bashrc.write_text(f"{COMPLETION_MARKER}\ntest\n{COMPLETION_END_MARKER}\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    _, config_file = _is_installed("bash", configs=configs)
-    # Assert
-    assert config_file == bashrc
-
-
-def test_is_installed_returns_false_when_marker_absent(temp_home):
-    # Arrange
-    bashrc = temp_home / ".bashrc"
-    bashrc.write_text("# no completion\n")
-    configs = {"bash": [bashrc]}
-    # Act
-    installed, _ = _is_installed("bash", configs=configs)
-    # Assert
-    assert installed is False
-
-
-# ---------- _get_config_file ----------
-
-
-def test_get_config_file_returns_existing_file_when_present(temp_home):
-    # Arrange
-    configs = {"bash": [temp_home / ".bashrc"]}
-    # Act
-    config = _get_config_file("bash", configs=configs)
-    # Assert
-    assert config == temp_home / ".bashrc"
-
-
-def test_get_config_file_returns_first_candidate_when_none_exist(tmp_path):
-    # Arrange
-    nonexistent = tmp_path / ".nonexistent"
-    configs = {"bash": [nonexistent]}
-    # Act
-    config = _get_config_file("bash", configs=configs)
-    # Assert
-    assert config == nonexistent
+    source = _Path(completion_module.__file__).read_text()
+    # Assert: the docstring may still tell users where to add a `source`
+    # line themselves; only real print() calls are forbidden.
+    assert "print(" not in source
