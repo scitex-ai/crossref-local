@@ -12,7 +12,7 @@ activate it by sourcing the printed path from your rc once::
     echo 'source ~/.scitex/crossref-local/runtime/completion/crossref-local' >> ~/.bashrc
 """
 
-import logging
+import scitex_logging as slogging
 import os
 import tempfile
 from pathlib import Path
@@ -22,7 +22,7 @@ from click.shell_completion import BashComplete, FishComplete, ZshComplete
 
 PROG_NAME = "crossref-local"
 
-logger = logging.getLogger(__name__)
+logger = slogging.getLogger(__name__)
 
 _COMPLETE_VAR = "_" + PROG_NAME.upper().replace("-", "_") + "_COMPLETE"
 
