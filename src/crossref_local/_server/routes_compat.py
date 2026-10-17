@@ -2,7 +2,11 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+try:
+    from fastapi import APIRouter, HTTPException
+except ImportError:  # fastapi absent — imported only under SERVER_AVAILABLE
+    APIRouter = None  # type: ignore[assignment]
+    HTTPException = None  # type: ignore[assignment]
 
 from .._core import fts
 from .._core.db import get_db

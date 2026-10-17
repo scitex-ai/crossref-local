@@ -11,40 +11,62 @@ Modular server structure:
 
 import os
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+except ImportError:  # fastapi absent — the [server]-gated HTTP capability only
+    FastAPI = None  # type: ignore[assignment]
+    CORSMiddleware = None  # type: ignore[assignment]
+
+SERVER_AVAILABLE = FastAPI is not None
+SERVER_EXTRA_HINT = "pip install 'crossref-local[all]'"
 
 from .. import __version__
-from .middleware import UserContextMiddleware
-from .routes_works import router as works_router
-from .routes_citations import router as citations_router
-from .routes_collections import router as collections_router
-from .routes_compat import router as compat_router
 
-# Create FastAPI app
-app = FastAPI(
-    title="CrossRef Local API",
-    description="Fast full-text search across 167M+ scholarly works",
-    version=__version__,
-)
+if SERVER_AVAILABLE:
+    from .middleware import UserContextMiddleware
+    from .routes_works import router as works_router
+    from .routes_citations import router as citations_router
+    from .routes_collections import router as collections_router
+    from .routes_compat import router as compat_router
 
-# Middleware
-app.add_middleware(UserContextMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # Create FastAPI app
+    app = FastAPI(
+        title="CrossRef Local API",
+        description="Fast full-text search across 167M+ scholarly works",
+        version=__version__,
+    )
 
-# Include routers
-app.include_router(works_router)
-app.include_router(citations_router)
-app.include_router(collections_router)
-app.include_router(compat_router)
+    # Middleware
+    app.add_middleware(UserContextMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Include routers
+    app.include_router(works_router)
+    app.include_router(citations_router)
+    app.include_router(collections_router)
+    app.include_router(compat_router)
+else:
+    app = None
 
 
-@app.get("/")
+def _register_routes() -> None:
+    """Register plain route functions against the FastAPI app.
+
+    A no-op without fastapi: there is no app to register against.
+    """
+    if app is None:
+        return
+    app.get("/")(root)
+    app.get("/health")(health)
+    app.get("/info")(info)
+
+
 def root():
     """API root with endpoint information."""
     return {
@@ -71,7 +93,6 @@ def root():
     }
 
 
-@app.get("/health")
 def health():
     """Health check endpoint."""
     from .._core.db import get_db
@@ -84,7 +105,6 @@ def health():
     }
 
 
-@app.get("/info")
 def info():
     """Get database statistics."""
     from .._core.db import get_db
@@ -129,6 +149,9 @@ DEFAULT_HOST = os.environ.get(
 )
 
 
+_register_routes()
+
+
 def run_server(host: str = None, port: int = None, force: bool = False):
     """Run the FastAPI server.
 
@@ -137,7 +160,19 @@ def run_server(host: str = None, port: int = None, force: bool = False):
         port: Port to listen on (default: 31291)
         force: If True, kill any existing process using the port
     """
-    import uvicorn
+    try:
+        import uvicorn
+    except ImportError as e:
+        raise RuntimeError(
+            "uvicorn is not installed, so the crossref-local HTTP server is "
+            f"unavailable. Install it with: {SERVER_EXTRA_HINT}"
+        ) from e
+
+    if app is None:
+        raise RuntimeError(
+            "fastapi is not installed, so the crossref-local HTTP server is "
+            f"unavailable. Install it with: {SERVER_EXTRA_HINT}"
+        )
 
     host = host or DEFAULT_HOST
     port = port or DEFAULT_PORT

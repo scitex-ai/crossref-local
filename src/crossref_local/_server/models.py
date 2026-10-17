@@ -1,7 +1,10 @@
 """Pydantic models for API responses."""
 
 from typing import Optional, List
-from pydantic import BaseModel
+try:
+    from pydantic import BaseModel
+except ImportError:  # pydantic absent — imported only under SERVER_AVAILABLE
+    BaseModel = object  # type: ignore[assignment]
 
 from .. import __version__
 

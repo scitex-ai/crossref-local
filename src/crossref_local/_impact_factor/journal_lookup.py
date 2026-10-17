@@ -9,9 +9,10 @@ Falls back to direct database query if table doesn't exist.
 import json
 import sqlite3
 from typing import Dict, List, Optional
-import logging
 
-logger = logging.getLogger(__name__)
+import scitex_logging as slogging
+
+logger = slogging.getLogger(__name__)
 
 
 class JournalLookup:

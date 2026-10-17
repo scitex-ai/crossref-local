@@ -1,7 +1,11 @@
 """Request middleware for CrossRef Local API."""
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
+try:
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+except ImportError:  # fastapi/starlette absent — imported only under SERVER_AVAILABLE
+    Request = None  # type: ignore[assignment]
+    BaseHTTPMiddleware = object  # type: ignore[assignment]
 
 
 class UserContextMiddleware(BaseHTTPMiddleware):

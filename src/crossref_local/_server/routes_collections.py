@@ -3,8 +3,15 @@
 import tempfile
 from typing import Optional
 
-from fastapi import APIRouter, Query, HTTPException, Request
-from fastapi.responses import FileResponse
+try:
+    from fastapi import APIRouter, HTTPException, Query, Request
+    from fastapi.responses import FileResponse
+except ImportError:  # fastapi absent — imported only under SERVER_AVAILABLE
+    APIRouter = None  # type: ignore[assignment]
+    HTTPException = None  # type: ignore[assignment]
+    Query = None  # type: ignore[assignment]
+    Request = None  # type: ignore[assignment]
+    FileResponse = None  # type: ignore[assignment]
 
 from .. import cache
 from .._cache.utils import sanitize_name

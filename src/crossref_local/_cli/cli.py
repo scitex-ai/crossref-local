@@ -3,11 +3,8 @@
 import sys
 
 import click
-from rich.console import Console
 
 from .. import __version__, info
-
-console = Console()
 
 
 class AliasedGroup(click.Group):
@@ -67,17 +64,17 @@ def _print_recursive_help(ctx, param, value):
 
     def _print_command_help(cmd, prefix: str, parent_ctx):
         """Recursively print help for a command and its subcommands."""
-        console.print(f"\n[bold cyan]━━━ {prefix} ━━━[/bold cyan]")
+        click.echo(f"\n━━━ {prefix} ━━━")
         sub_ctx = click.Context(cmd, info_name=prefix.split()[-1], parent=parent_ctx)
-        console.print(cmd.get_help(sub_ctx))
+        click.echo(cmd.get_help(sub_ctx))
 
         if isinstance(cmd, click.Group):
             for sub_name, sub_cmd in sorted(cmd.commands.items()):
                 _print_command_help(sub_cmd, f"{prefix} {sub_name}", sub_ctx)
 
     # Print main help
-    console.print("[bold cyan]━━━ crossref-local ━━━[/bold cyan]")
-    console.print(ctx.get_help())
+    click.echo("━━━ crossref-local ━━━")
+    click.echo(ctx.get_help())
 
     # Print all subcommands recursively
     for name, cmd in sorted(cli.commands.items()):

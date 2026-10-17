@@ -12,12 +12,13 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
-import logging
+
+import scitex_logging as slogging
 
 from .journal_lookup import JournalLookup
 from ..config import Config
 
-logger = logging.getLogger(__name__)
+logger = slogging.getLogger(__name__)
 
 
 class ImpactFactorCalculator:
@@ -447,18 +448,27 @@ class ImpactFactorCalculator:
         Returns:
             List with added moving_average field
         """
-        import numpy as np
+        try:
+            import numpy as np
+        except ImportError:
+            np = None
 
         # Extract IF values
         if_values = [r['impact_factor'] for r in if_time_series]
 
-        # Calculate moving average
+        # Calculate moving average (numpy when available, else pure python)
         if len(if_values) >= window:
-            ma_values = np.convolve(if_values, np.ones(window)/window, mode='valid')
+            if np is not None:
+                ma_values = np.convolve(if_values, np.ones(window)/window, mode='valid')
 
-            # Pad with None for years where MA can't be calculated
-            padding = [None] * (window - 1)
-            ma_values = padding + list(ma_values)
+                # Pad with None for years where MA can't be calculated
+                padding = [None] * (window - 1)
+                ma_values = padding + list(ma_values)
+            else:
+                ma_values = [None] * (window - 1) + [
+                    sum(if_values[i:i + window]) / window
+                    for i in range(len(if_values) - window + 1)
+                ]
         else:
             ma_values = [None] * len(if_values)
 
@@ -471,7 +481,7 @@ class ImpactFactorCalculator:
 
 if __name__ == "__main__":
     # Example usage
-    logging.basicConfig(level=logging.INFO)
+    import click
 
     with ImpactFactorCalculator() as calc:
         # Test: Calculate IF for Nature in 2023
@@ -482,13 +492,13 @@ if __name__ == "__main__":
             method="is-referenced-by"
         )
 
-        print("\n" + "="*60)
-        print(f"Journal: {result['journal']}")
-        print(f"Target Year: {result['target_year']}")
-        print(f"Window: {result['window_range']}")
-        print(f"Articles: {result['total_articles']}")
-        print(f"Citations: {result['total_citations']}")
-        print(f"Impact Factor: {result['impact_factor']:.3f}")
-        print("="*60)
+        click.echo("\n" + "="*60)
+        click.echo(f"Journal: {result['journal']}")
+        click.echo(f"Target Year: {result['target_year']}")
+        click.echo(f"Window: {result['window_range']}")
+        click.echo(f"Articles: {result['total_articles']}")
+        click.echo(f"Citations: {result['total_citations']}")
+        click.echo(f"Impact Factor: {result['impact_factor']:.3f}")
+        click.echo("="*60)
 
 # EOF
