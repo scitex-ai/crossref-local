@@ -95,6 +95,16 @@ Issues = "https://github.com/ywatanabe1989/crossref-local/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/crossref_local"]
 
+[tool.scitex_dev.audit]
+# contributor-assistant/github-action reads its PAT from the env var
+# PERSONAL_ACCESS_TOKEN; the repo secret of the same name (set 2026-03-11)
+# is the CLA-gate token. It is the per-action CLA convention (sibling of
+# the central-list CLA_PERSONAL_ACCESS_TOKEN exception), so it is exempt
+# from the CROSSREF_LOCAL_ per-package prefix (PS-168).
+ps168_secret_exceptions = [
+    "PERSONAL_ACCESS_TOKEN",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
