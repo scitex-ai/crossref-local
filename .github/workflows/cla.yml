@@ -1,5 +1,14 @@
 name: CLA Assistant
 
+# Org-level reusable-workflow caller (scitex-ai/.github#claremont, 2026-07-10).
+# Triggers/permissions preserved verbatim from the prior local file.
+# Reusable defaults (owner_login=ywatanabe1989,
+# owner_allowlist="bot*,ywatanabe1989", default_branch=main) match this
+# repo's prior hardcoded values, so no input overrides are needed.
+# The PAT remap (PAT -> secrets.PERSONAL_ACCESS_TOKEN) is preserved by
+# mapping the repo's existing PERSONAL_ACCESS_TOKEN secret to the ONE
+# secret name the callee declares (never `secrets: inherit`).
+
 on:
   issue_comment:
     types: [created]
@@ -13,21 +22,11 @@ permissions:
   statuses: write
 
 jobs:
-  CLAssistant:
-    runs-on: ubuntu-latest
-    steps:
-      - name: CLA Assistant
-        uses: contributor-assistant/github-action@v2.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.CROSSREF_LOCAL_PERSONAL_ACCESS_TOKEN }}
-        with:
-          path-to-signatures: "signatures/cla.json"
-          path-to-document: "https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md"
-          branch: "cla-signatures"
-          allowlist: bot*,ywatanabe1989
-          custom-allsigned-prcomment: |
-            Thank you for signing the SciTeX CLA. Your contribution can now be reviewed.
-          custom-notsigned-prcomment: |
-            Please sign the [SciTeX CLA](https://github.com/ywatanabe1989/crossref-local/blob/main/CLA.md) before your contribution can be merged.
-            Comment `I have read and agree to the SciTeX CLA.` to sign.
+  call:
+    uses: scitex-ai/.github/.github/workflows/cla.yml@main
+    # Pass the ONE secret the callee declares, never `secrets: inherit`.
+    # This job is startable by an outsider (`issue_comment`,
+    # `pull_request_target`); inheriting would forward every secret this
+    # repo holds into it.
+    secrets:
+      GH_PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

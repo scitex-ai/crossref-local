@@ -4,11 +4,11 @@ import json
 import sys
 
 import click
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 
-console = Console()
+# NOTE: Rich (Console/Table/Panel) was deliberately removed from this module
+# (PS-220): package source must emit through click/scitex-logging, not raw
+# print or Rich Console.print. The display below is plain text via
+# click.echo — same content, no colors.
 
 
 @click.command(
@@ -96,58 +96,39 @@ def check_cmd(
 
     if save_path:
         result.save(save_path, save_format)
-        console.print(f"\nResults saved to: {save_path}")
+        click.echo(f"\nResults saved to: {save_path}")
 
 
 def _display_rich(result):
-    """Display results using Rich formatting."""
+    """Display results as plain text (see module note on Rich removal)."""
     # Summary
     pct_found = result.found / max(result.total, 1) * 100
 
-    summary = Table.grid(padding=(0, 2))
-    summary.add_row("Total:", f"{result.total} citations")
-    summary.add_row("Found:", f"[green]{result.found}[/green] ({pct_found:.1f}%)")
-    summary.add_row("Missing:", f"[red]{result.missing}[/red]")
+    click.echo("Citation Check")
+    click.echo(f"  Total:       {result.total} citations")
+    click.echo(f"  Found:       {result.found} ({pct_found:.1f}%)")
+    click.echo(f"  Missing:     {result.missing}")
     if result.with_issues:
-        summary.add_row("With issues:", f"[yellow]{result.with_issues}[/yellow]")
-    summary.add_row("Time:", f"{result.elapsed_ms:.1f}ms")
-    console.print(Panel(summary, title="Citation Check", border_style="blue"))
+        click.echo(f"  With issues: {result.with_issues}")
+    click.echo(f"  Time:        {result.elapsed_ms:.1f}ms")
 
     # Missing
     missing = [e for e in result.entries if not e.found]
     if missing:
-        table = Table(
-            title=f"Missing ({len(missing)})", show_header=True, border_style="red"
-        )
-        table.add_column("DOI / Identifier", style="red")
-        table.add_column("Key")
-        table.add_column("Issues")
+        click.echo(f"\nMissing ({len(missing)}):")
         for e in missing:
-            table.add_row(
-                e.identifier[:60],
-                e.source_key or "",
-                "\n".join(e.issues),
-            )
-        console.print(table)
+            click.echo(f"  - {e.identifier[:60]} [{e.source_key or ''}]")
+            for issue in e.issues:
+                click.echo(f"      {issue}")
 
     # Issues
     with_issues = [e for e in result.entries if e.found and e.issues]
     if with_issues:
-        table = Table(
-            title=f"Issues ({len(with_issues)})",
-            show_header=True,
-            border_style="yellow",
-        )
-        table.add_column("DOI")
-        table.add_column("Key")
-        table.add_column("Issues", style="yellow")
+        click.echo(f"\nIssues ({len(with_issues)}):")
         for e in with_issues:
-            table.add_row(
-                e.identifier[:50],
-                e.source_key or "",
-                "\n".join(e.issues),
-            )
-        console.print(table)
+            click.echo(f"  - {e.identifier[:50]} [{e.source_key or ''}]")
+            for issue in e.issues:
+                click.echo(f"      {issue}")
 
     if not missing and not with_issues:
-        console.print("[green]All citations found with complete metadata.[/green]")
+        click.echo("All citations found with complete metadata.")

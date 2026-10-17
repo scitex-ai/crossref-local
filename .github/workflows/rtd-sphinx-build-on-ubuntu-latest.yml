@@ -1,4 +1,14 @@
-name: docs
+name: docs-caller
+
+# Calls the org reusable `rtd-sphinx-build`, and publishes what it builds.
+#
+# PS-231 conversion of the prior `rtd-sphinx-build-on-ubuntu-latest.yml`
+# leaf. `src/crossref_local/_sphinx_html/` is NOT a build artifact: hatch
+# wheels `src/crossref_local` wholesale, so the bundle SHIPS INSIDE THE
+# WHEEL. The reusable is deliberately build-only and hands the HTML back as
+# an artifact, so this caller vendors and commits under its OWN
+# `contents: write` (develop pushes only; main receives the bundle through
+# the develop -> main PR, keeping main linear-via-PR).
 
 on:
   push:
@@ -6,12 +16,24 @@ on:
   pull_request:
 
 jobs:
-  sphinx:
-    # Skip when HEAD is the bot's own previous docs auto-commit — breaks
-    # the infinite loop without using `[skip ci]`, which would also
-    # suppress the tag-push and release workflows when the auto-commit
-    # is the most recent commit on develop at release time.
+  sphinx-via-org-reusable:
+    # Loop-breaker: skip when HEAD is the bot's own docs auto-commit.
     if: "!contains(github.event.head_commit.message, 'docs(sphinx_html): refresh from CI build')"
+    uses: scitex-ai/.github/.github/workflows/rtd-sphinx-build.yml@main
+    with:
+      # .readthedocs.yaml pins build.tools.python 3.11; without this CI and
+      # RTD would build on different interpreters and could disagree.
+      python_version: "3.11"
+      # `-W` on PULL REQUESTS ONLY. A warning must block a PR; it must NOT
+      # block a push to develop, where failing would also stop the vendored
+      # bundle from refreshing at all.
+      fail_on_warning: ${{ github.event_name == 'pull_request' }}
+      upload_artifact: true
+      artifact_name: sphinx-html
+
+  sphinx-vendor-and-commit:
+    needs: sphinx-via-org-reusable
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,41 +41,58 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/download-artifact@v4
         with:
-          python-version: "3.11"
+          name: sphinx-html
+          path: .sphinx-html-artifact
 
-      - name: Install package + docs deps
-        run: pip install -e ".[docs]"
-
-      - name: Build Sphinx HTML (warnings fail PRs only)
+      - name: Refresh the vendored bundle, and ASSERT WHAT WAS DONE
+        # "No commit" is ambiguous (identical content vs. a copy that wrote
+        # nowhere, which freezes in-wheel docs with green CI). Failing loudly
+        # on empty sides collapses the ambiguity: afterwards, "no commit" can
+        # ONLY mean identical content.
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            sphinx-build -W -b html docs/sphinx docs/sphinx/_build/html
-          else
-            sphinx-build -b html docs/sphinx docs/sphinx/_build/html
+          set -euo pipefail
+          vendored=src/crossref_local/_sphinx_html
+
+          downloaded=$(find .sphinx-html-artifact -type f | wc -l)
+          echo "artifact files downloaded: ${downloaded}"
+          if [ "${downloaded}" -eq 0 ]; then
+            echo "::error::the sphinx-html artifact is empty - nothing to vendor" >&2
+            exit 1
           fi
 
-      - name: Refresh src/crossref_local/_sphinx_html/ (develop push only)
-        # main is PR-only — its _sphinx_html/ bundle arrives via the
-        # develop -> main PR. Direct bot-pushes to main are inhibited
-        # so the branch history stays linear-via-PR.
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-        run: |
-          rm -rf src/crossref_local/_sphinx_html
-          cp -rf docs/sphinx/_build/html src/crossref_local/_sphinx_html
-          touch src/crossref_local/_sphinx_html/.nojekyll
+          before=$(find "${vendored}" -type f 2>/dev/null | wc -l || true)
+          echo "vendored files before: ${before}"
 
-      - name: Commit refreshed HTML if it changed (develop push only)
+          rm -rf "${vendored}"
+          mkdir -p "${vendored}"
+          cp -rf .sphinx-html-artifact/. "${vendored}"/
+          rm -rf .sphinx-html-artifact
+
+          # sphinx-build writes its internal cache to <outdir>/.doctrees —
+          # never served, drags pickles into the wheel. Drop it.
+          rm -rf "${vendored}"/.doctrees
+          touch "${vendored}"/.nojekyll
+
+          after=$(find "${vendored}" -type f | wc -l)
+          echo "vendored files after: ${after}"
+          if [ "${after}" -eq 0 ]; then
+            echo "::error::${vendored} is empty after the refresh - the copy wrote nowhere" >&2
+            exit 1
+          fi
+
+      - name: Commit refreshed HTML if it changed
         continue-on-error: true
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         run: |
+          set -euo pipefail
           if [ -n "$(git status --porcelain src/crossref_local/_sphinx_html)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add src/crossref_local/_sphinx_html
             git commit -m "docs(sphinx_html): refresh from CI build"
             git push
+          else
+            echo "vendored bundle unchanged - nothing to commit"
           fi

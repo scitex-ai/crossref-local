@@ -11,7 +11,13 @@ Usage:
 
 import json
 
-from fastmcp import FastMCP
+try:
+    from fastmcp import FastMCP
+except ImportError:  # fastmcp absent — the [mcp]-gated MCP capability only
+    FastMCP = None  # type: ignore[assignment]
+
+MCP_AVAILABLE = FastMCP is not None
+MCP_EXTRA_HINT = "pip install 'crossref-local[mcp]'"
 
 
 from .. import (
@@ -20,16 +26,20 @@ from .. import (
     search as _search,
 )
 
-# Initialize MCP server
-mcp = FastMCP(
-    name="crossref-local",
-    instructions="Local CrossRef database with 167M+ works and full-text search. "
-    "Use search to find papers, search_by_doi for DOI lookup, enrich_dois to add "
-    "citation counts and references, and status for stats.",
+# Initialize MCP server (None without fastmcp; tools register as plain
+# functions and run_server refuses with the install hint).
+mcp = (
+    FastMCP(
+        name="crossref-local",
+        instructions="Local CrossRef database with 167M+ works and full-text search. "
+        "Use search to find papers, search_by_doi for DOI lookup, enrich_dois to add "
+        "citation counts and references, and status for stats.",
+    )
+    if MCP_AVAILABLE
+    else None
 )
 
 
-@mcp.tool(name="search_works")
 def search(
     query: str,
     limit: int = 10,
@@ -101,7 +111,6 @@ def search(
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
 def search_by_doi(
     doi: str,
     as_citation: bool = False,
@@ -152,7 +161,6 @@ def search_by_doi(
     return json.dumps(result, indent=2)
 
 
-@mcp.tool(name="get_status")
 def status() -> str:
     """Report local CrossRef database status — path, work count (~167M), FTS5 index size, citation-graph edge count, and access mode (DB vs HTTP). Use when the user asks "is the CrossRef db ready?", "how many papers do I have?", "check crossref-local status", or before running a search to confirm the db is usable.
 
@@ -163,7 +171,6 @@ def status() -> str:
     return json.dumps(db_info, indent=2)
 
 
-@mcp.tool()
 def enrich_dois(dois: list[str]) -> str:
     """Enrich DOIs with full metadata including citation counts and references.
 
@@ -203,7 +210,6 @@ def enrich_dois(dois: list[str]) -> str:
     )
 
 
-@mcp.tool()
 def check_citations(
     identifiers: list[str],
     validate_metadata: bool = True,
@@ -227,7 +233,6 @@ def check_citations(
     return json.dumps(result.to_dict(), indent=2)
 
 
-@mcp.tool(name="check_bibtex")
 def check_bibtex_file(
     file_path: str, validate_metadata: bool = True, suggest_enrichment: bool = True
 ) -> str:
@@ -247,7 +252,6 @@ def check_bibtex_file(
     return json.dumps(result.to_dict(), indent=2)
 
 
-@mcp.tool()
 def cache_create(
     name: str,
     query: str,
@@ -275,7 +279,6 @@ def cache_create(
     return json.dumps(info.to_dict(), indent=2)
 
 
-@mcp.tool()
 def cache_query(
     name: str,
     fields: list[str] | None = None,
@@ -325,7 +328,6 @@ def cache_query(
     return json.dumps({"count": len(papers), "papers": papers}, indent=2)
 
 
-@mcp.tool()
 def cache_stats(name: str) -> str:
     """Get cache statistics.
 
@@ -343,7 +345,6 @@ def cache_stats(name: str) -> str:
     return json.dumps(stats, indent=2)
 
 
-@mcp.tool()
 def cache_list() -> str:
     """List all available caches.
 
@@ -356,7 +357,6 @@ def cache_list() -> str:
     return json.dumps([c.to_dict() for c in caches], indent=2)
 
 
-@mcp.tool()
 def cache_top_cited(
     name: str,
     n: int = 20,
@@ -380,7 +380,6 @@ def cache_top_cited(
     return json.dumps(papers, indent=2)
 
 
-@mcp.tool()
 def cache_citation_summary(name: str) -> str:
     """Get citation statistics for cached papers.
 
@@ -398,7 +397,6 @@ def cache_citation_summary(name: str) -> str:
     return json.dumps(summary, indent=2)
 
 
-@mcp.tool()
 def cache_plot_scatter(
     name: str,
     output: str,
@@ -422,7 +420,6 @@ def cache_plot_scatter(
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
 def cache_plot_network(
     name: str,
     output: str,
@@ -446,7 +443,6 @@ def cache_plot_network(
     return json.dumps(result, indent=2)
 
 
-@mcp.tool()
 def cache_export(
     name: str,
     output_path: str,
@@ -473,7 +469,6 @@ def cache_export(
 # §5 — skills introspection (audit-mcp-tools)
 
 
-@mcp.tool()
 def crossref_local_skills_list() -> str:
     """List the names of every skill page shipped by crossref-local.
 
@@ -495,7 +490,6 @@ def crossref_local_skills_list() -> str:
         return json.dumps({"success": False, "error": str(e)}, indent=2)
 
 
-@mcp.tool()
 def crossref_local_skills_get(name: str) -> str:
     """Fetch the full Markdown content of one crossref-local skill page.
 
@@ -536,6 +530,37 @@ def crossref_local_skills_get(name: str) -> str:
         return json.dumps({"success": False, "error": str(e)}, indent=2)
 
 
+def _register_tools() -> None:
+    """Register every tool function against the FastMCP server.
+
+    A no-op without fastmcp: there is no server to register against.
+    Explicit names preserve the prior ``@mcp.tool(name=...)`` decorators;
+    the rest derive from the function names as before.
+    """
+    if mcp is None:
+        return
+    mcp.tool(name="search_works")(search)
+    mcp.tool()(search_by_doi)
+    mcp.tool(name="get_status")(status)
+    mcp.tool()(enrich_dois)
+    mcp.tool()(check_citations)
+    mcp.tool(name="check_bibtex")(check_bibtex_file)
+    mcp.tool()(cache_create)
+    mcp.tool()(cache_query)
+    mcp.tool()(cache_stats)
+    mcp.tool()(cache_list)
+    mcp.tool()(cache_top_cited)
+    mcp.tool()(cache_citation_summary)
+    mcp.tool()(cache_plot_scatter)
+    mcp.tool()(cache_plot_network)
+    mcp.tool()(cache_export)
+    mcp.tool()(crossref_local_skills_list)
+    mcp.tool()(crossref_local_skills_get)
+
+
+_register_tools()
+
+
 def run_server(
     transport: str = "stdio",
     host: str = "localhost",
@@ -556,6 +581,11 @@ def run_server(
 
         kill_process_on_port(port)
 
+    if mcp is None:
+        raise RuntimeError(
+            "fastmcp is not installed, so the crossref-local MCP server is "
+            f"unavailable. Install it with: {MCP_EXTRA_HINT}"
+        )
     if transport == "stdio":
         mcp.run(transport="stdio")
     elif transport == "sse":

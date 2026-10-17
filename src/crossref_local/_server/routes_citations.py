@@ -1,6 +1,10 @@
 """Citation network endpoints."""
 
-from fastapi import APIRouter, Query
+try:
+    from fastapi import APIRouter, Query
+except ImportError:  # fastapi absent — imported only under SERVER_AVAILABLE
+    APIRouter = None  # type: ignore[assignment]
+    Query = None  # type: ignore[assignment]
 
 from .._core.citations import get_citing, get_cited, get_citation_count, CitationNetwork
 from .models import (
