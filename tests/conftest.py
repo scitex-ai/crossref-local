@@ -28,39 +28,16 @@ package's own :func:`crossref_local._core.ingest.work_values` normaliser,
 so the fixture records have exactly the shape ingest writes). That seed is
 the direct replacement for the deleted ``fixtures/test_crossref.db``: the
 corpus-shaped tests query it the same way they queried that file.
+
+Subprocess coverage is configured in pyproject.toml via coverage.py's
+subprocess patch; test collection must not install .pth files or overwrite
+caller-owned coverage environment variables.
 """
 
 import contextlib
 import os
-import sysconfig
-from pathlib import Path
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Subprocess coverage wiring (TODO §0). Force-set (NOT setdefault — that is a
-# silent no-op when the env var is empty) so child Python interpreters spawned
-# by tests (subprocess.run, click CliRunner via fresh interpreter, etc.)
-# inherit coverage. See:
-#   ~/proj/scitex-dev/src/scitex_dev/_skills/general/
-#     05_development_06_subprocess-coverage.md
-# ---------------------------------------------------------------------------
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-os.environ["COVERAGE_PROCESS_START"] = str(_REPO_ROOT / "pyproject.toml")
-os.environ["COVERAGE_FILE"] = str(_REPO_ROOT / ".coverage")
-
-# Idempotent .pth shim: ensures `coverage.process_startup()` runs on
-# every child interpreter import.
-try:
-    _SITE = Path(sysconfig.get_paths()["purelib"])
-    _PTH = _SITE / "coverage_subprocess.pth"
-    _SHIM = "import coverage; coverage.process_startup()"
-    if not _PTH.exists() or _PTH.read_text().strip() != _SHIM:
-        _PTH.write_text(_SHIM + "\n")
-except Exception:
-    # Best-effort: failure here only loses subprocess coverage; do not
-    # break the test run.
-    pass
 
 #: The one knob that decides which store the package opens. Set to the
 #: session's throwaway schema below; restored when the run ends.
