@@ -67,25 +67,28 @@ Modules:
 from __future__ import annotations
 
 # ============================================================================
-# .env-respect: walk up from CWD to $HOME, loading every .env we find.
-# Runs as the very first thing on import so downstream config readers
-# (env vars consumed in _core.config etc.) see project-local overrides.
+# .env-respect: walk up from CWD to $HOME and export only this package's own
+# ``CROSSREF_LOCAL_*`` settings (closest .env wins; process env always wins).
+# Runs first on import so downstream config readers (_core.config etc.) see
+# project-local overrides. Other .env variables -- credentials for unrelated
+# services -- are never copied into os.environ, so subprocesses do not
+# inherit them (scitex-config#47).
 # ============================================================================
 try:
     from pathlib import Path as _Path
 
-    # scitex-config exposes both ``PriorityConfig`` (the class) and
-    # ``load_dotenv`` (the parent-walking helper that landed on develop
-    # at eb9507e1 with ``walk_up`` + ``stop_at`` kwargs). Use the helper
-    # as a classmethod when available, fall back to the module-level
-    # function otherwise — same call signature either way.
-    from scitex_config import PriorityConfig as _PC
+    from scitex_config import load_dotenv as _load_dotenv
+    from scitex_config import read_dotenv as _read_dotenv
 
-    _loader = getattr(_PC, "load_dotenv", None)
-    if _loader is None:
-        from scitex_config import load_dotenv as _loader  # type: ignore[no-redef]
-    _loader(walk_up=True, stop_at=str(_Path.home()))
-    del _PC, _Path, _loader
+    _home = str(_Path.home())
+    _keys = [
+        _k
+        for _k in _read_dotenv(walk_up=True, stop_at=_home)
+        if _k.startswith("CROSSREF_LOCAL_")
+    ]
+    if _keys:
+        _load_dotenv(walk_up=True, stop_at=_home, keys=_keys)
+    del _Path, _load_dotenv, _read_dotenv, _home, _keys
 except Exception:
     pass
 
